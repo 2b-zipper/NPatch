@@ -16,6 +16,7 @@ public class PatchConfig {
     public final String newPackage;
     public final boolean useMicroG;
     public final boolean hideLibs;
+    public final String microgVendor;
 
     public PatchConfig(
             boolean useManager,
@@ -29,7 +30,8 @@ public class PatchConfig {
             boolean outputLog,
             String newPackage,
             boolean useMicroG,
-            boolean hideLibs
+            boolean hideLibs,
+            String microgVendor
     ) {
         this.useManager = useManager;
         this.debuggable = debuggable;
@@ -44,6 +46,7 @@ public class PatchConfig {
         this.outputLog = outputLog;
         this.useMicroG = useMicroG;
         this.hideLibs = hideLibs;
+        this.microgVendor = (microgVendor != null && !microgVendor.isEmpty()) ? microgVendor : "app.revanced";
 
         this.lspConfig = LSPConfig.instance;
     }

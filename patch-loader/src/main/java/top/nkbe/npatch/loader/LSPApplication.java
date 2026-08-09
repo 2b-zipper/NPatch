@@ -310,7 +310,7 @@ public class LSPApplication {
 
         if (config.useMicroG) {
             logInfo("Activating MicroG redirect via NPatch");
-            GmsRedirector.activate(context, config.originalSignature);
+            GmsRedirector.activate(context, config.originalSignature, config.microgVendor);
         }
 
         logInfo("NPatch bootstrap completed");

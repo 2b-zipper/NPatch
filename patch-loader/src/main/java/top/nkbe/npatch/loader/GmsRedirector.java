@@ -28,9 +28,13 @@ public class GmsRedirector {
 
     private static String targetGms = null;
     private static String originalSignature;
+    private static String vendorPackage = null;
 
-    public static void activate(Context context, String origSig) {
+    public static void activate(Context context, String origSig, String vendor) {
         originalSignature = origSig;
+        if (vendor != null && !vendor.isEmpty()) {
+            vendorPackage = vendor + ".android.gms";
+        }
 
         targetGms = findInstalledMicroG(context);
         if (targetGms == null) {
@@ -51,6 +55,13 @@ public class GmsRedirector {
 
     private static String findInstalledMicroG(Context context) {
         PackageManager pm = context.getPackageManager();
+        // Vendor-specific package first (e.g. app.revanced.android.gms), then known community builds.
+        if (vendorPackage != null) {
+            try {
+                pm.getPackageInfo(vendorPackage, 0);
+                return vendorPackage;
+            } catch (PackageManager.NameNotFoundException ignored) {}
+        }
         for (String pkg : MICROG_PACKAGES) {
             try {
                 pm.getPackageInfo(pkg, 0);
