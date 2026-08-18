@@ -32,6 +32,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
 import coil.compose.AsyncImage
 import top.nkbe.npatch.LSPApplication
+import top.nkbe.npatch.config.Configs
 import top.nkbe.npatch.config.ThemeConfig
 import top.nkbe.npatch.config.ThemeMode
 import top.nkbe.npatch.config.ThemeSettings
@@ -43,6 +44,7 @@ import top.nkbe.npatch.ui.page.MainTab
 import top.nkbe.npatch.ui.page.Navigator
 import top.nkbe.npatch.ui.page.NewPatchScreen
 import top.nkbe.npatch.ui.page.Route
+import top.nkbe.npatch.ui.page.WelcomeScreen
 import top.nkbe.npatch.ui.theme.LSPTheme
 import top.nkbe.npatch.ui.util.LocalBackgroundImagePath
 import top.nkbe.npatch.ui.util.LocalCardBackgroundAlpha
@@ -155,10 +157,14 @@ class MainActivity : ComponentActivity() {
                         }
 
                         val snackbarHostState = remember { SnackbarHostState() }
-                        val backStack = remember { mutableStateListOf<NavKey>(Route.Main()) }
+                        val startRoute = remember {
+                            if (Configs.welcomeSeen) Route.Main() else Route.Welcome()
+                        }
+                        val backStack = remember { mutableStateListOf<NavKey>(startRoute) }
                         val navigator = remember { Navigator(backStack) }
+                        val startMainRoute = startRoute as? Route.Main
                         var selectedMainTab by rememberSaveable {
-                            mutableIntStateOf(MainTab.Home.ordinal)
+                            mutableIntStateOf(startMainRoute?.initialTab ?: MainTab.Home.ordinal)
                         }
 
                         CompositionLocalProvider(
@@ -174,6 +180,17 @@ class MainActivity : ComponentActivity() {
                                             navigator = navigator,
                                             selectedTab = selectedMainTab,
                                             onSelectedTabChange = { selectedMainTab = it },
+                                        )
+                                    }
+
+                                    entry<Route.Welcome> { route ->
+                                        WelcomeScreen(
+                                            reviewMode = route.reviewMode,
+                                            onFinish = {
+                                                backStack.clear()
+                                                backStack.add(Route.Main())
+                                            },
+                                            onReturn = { navigator.pop() }
                                         )
                                     }
 

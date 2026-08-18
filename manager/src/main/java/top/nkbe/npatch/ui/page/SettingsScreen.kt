@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Palette
@@ -115,6 +116,7 @@ fun SettingsScreen() {
             LanguagePreference()
             KeyStore()
             DetailPatchLogs()
+            WelcomeGuide()
             StorageDirectory()
             Spacer(Modifier.height(24.dp))
         }
@@ -620,5 +622,18 @@ fun StorageDirectory() {
             SettingsStartIcon(Icons.Outlined.Folder)
         },
         onClick = { launcher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)) }
+    )
+}
+
+@Composable
+private fun WelcomeGuide() {
+    val navigator = LocalNavigator.current
+    ArrowPreference(
+        title = stringResource(R.string.settings_view_welcome),
+        summary = stringResource(R.string.settings_view_welcome_summary),
+        startAction = {
+            SettingsStartIcon(Icons.Outlined.Info)
+        },
+        onClick = { navigator.push(Route.Welcome(reviewMode = true)) }
     )
 }
