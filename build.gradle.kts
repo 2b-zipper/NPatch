@@ -40,10 +40,16 @@ val (coreCommitCount, coreLatestTag) = runCatching {
         }
 }.getOrNull() ?: (3068 to "2.1")
 
+val latestTag = runCatching {
+    FileRepository(rootProject.file(".git")).use { repo ->
+        Git(repo).describe().setTags(true).setAbbrev(0).call()
+    }
+}.getOrNull()?.removePrefix("v")
+
 val defaultManagerPackageName by extra("app.voidhack.npatch")
 val apiCode by extra(102)
 val verCode by extra(commitCount)
-val verName by extra("1.0.7")
+val verName by extra(latestTag ?: "1.0.0")
 val coreVerCode by extra(coreCommitCount)
 val coreVerName by extra(coreLatestTag)
 val androidMinSdkVersion by extra(28)
