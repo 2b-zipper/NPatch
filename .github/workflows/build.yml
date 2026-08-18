@@ -6,6 +6,9 @@ on:
   push:
   merge_group:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: ビルド
@@ -33,7 +36,7 @@ jobs:
           ${{ runner.os }}-ccache-
 
     - name: 必要に応じて署名キーを書き込む
-      if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+      if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'
       run: |
         if [ ! -z "${{ secrets.KEY_STORE }}" ]; then
           echo androidStorePassword='${{ secrets.KEY_STORE_PASSWORD }}' >> gradle.properties
@@ -106,3 +109,13 @@ jobs:
         name: symbols-${{ env.commit }}
         path: |
           patch-loader/build/symbols
+
+    - name: GitHub リリースの作成（タグプッシュ時のみ）
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          out/release/*
+          out/debug/*
+        generate_release_notes: true
+        fail_on_unmatched_files: false
