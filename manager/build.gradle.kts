@@ -31,6 +31,21 @@ plugins {
     id("kotlin-parcelize")
 }
 
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.addAll(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
+            "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
+            "-opt-in=androidx.compose.material.ExperimentalMaterialApi",
+            "-opt-in=androidx.lifecycle.compose.ExperimentalLifecycleComposeApi",
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+        )
+    }
+}
+
 android {
     defaultConfig {
         applicationId = defaultManagerPackageName
@@ -152,6 +167,8 @@ dependencies {
     implementation(npatch.androidx.room.runtime)
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:5.3.2")
+    // Split APK merging (REAndroid) — merges base + config splits into a single APK
+    implementation("com.github.REAndroid:arsclib:a28c6fb2a7")
 
     implementation(libs.material)
     implementation(libs.gson)
@@ -166,6 +183,9 @@ dependencies {
     implementation(npatch.haze)
     implementation(npatch.hazeBlur)
     implementation(npatch.backdrop)
+    implementation(npatch.coui)
+    implementation(npatch.couiPreference)
+    implementation(npatch.couiIcons)
     implementation(npatch.androidx.webkit)
 
 

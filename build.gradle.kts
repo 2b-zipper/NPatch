@@ -40,7 +40,7 @@ val (coreCommitCount, coreLatestTag) = runCatching {
         }
 }.getOrNull() ?: (3068 to "2.1")
 
-val defaultManagerPackageName by extra("top.nkbe.npatch")
+val defaultManagerPackageName by extra("app.voidhack.npatch")
 val apiCode by extra(102)
 val verCode by extra(commitCount)
 val verName by extra("1.0.7")
@@ -60,21 +60,10 @@ tasks.register<Delete>("clean") {
 
 listOf("Debug", "Release").forEach { variant ->
     val variantLower = variant.lowercase()
-    val remoteApiTask = tasks.register<Copy>("buildRemoteApi$variant") {
-        description = "Build and collect the NPatch Remote API $variant AAR"
-        dependsOn(":remote-api:assemble$variant")
-        from(project(":remote-api").layout.buildDirectory.dir("outputs/aar")) {
-            include("remote-api-$variantLower.aar")
-            rename { "npatch-remote-api-v1.0.0-$variantLower.aar" }
-        }
-        into(layout.projectDirectory.dir("out/$variantLower"))
-    }
 
     tasks.register("build$variant") {
         description = "Build NPatch with $variant"
-        dependsOn(tasks.findByPath(":jar:build$variant") ?: "jar:build$variant")
         dependsOn(tasks.findByPath(":manager:build$variant") ?: "manager:build$variant")
-        dependsOn(remoteApiTask)
     }
 }
 

@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +21,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.nio.file.StandardOpenOption;
@@ -146,7 +149,22 @@ public class OriginApkHelper {
                     .append('-')
                     .append(file.length());
         }
-        return stamp.toString();
+        // The raw stamp can exceed NAME_MAX (255 bytes) when an app ships many splits
+        // (e.g. origin + 9 splits + patched base = ~365 chars), which makes
+        // Files.createDirectories fail with ENAMETOOLONG. Hash it down to a fixed length.
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(stamp.toString().getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is guaranteed on Android; this fallback only guards exotic runtimes.
+            return stamp.length() > 200 ? stamp.substring(0, 200) : stamp.toString();
+        }
     }
 
     private static boolean hasNativeLibraries(Path dir) {

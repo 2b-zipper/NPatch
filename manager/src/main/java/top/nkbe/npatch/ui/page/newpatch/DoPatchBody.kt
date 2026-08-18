@@ -13,7 +13,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,7 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,25 +42,27 @@ import top.nkbe.npatch.lspApp
 import top.nkbe.npatch.ui.component.ShimmerAnimation
 import top.nkbe.npatch.ui.page.Navigator
 import top.nkbe.npatch.ui.util.LocalSnackbarHost
-import top.nkbe.npatch.ui.util.backgroundAwareCardColors
 import top.nkbe.npatch.ui.util.checkIsApkFixedByLSP
 import top.nkbe.npatch.ui.util.isScrolledToEnd
 import top.nkbe.npatch.ui.util.lastItemIndex
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.PatchState
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.ViewAction
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import top.nkbe.npatch.ui.component.compat.SmallTitle
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
-import top.nkbe.npatch.ui.component.compat.TextButton
-import top.nkbe.npatch.ui.component.compat.OverlayDialog
-import androidx.compose.material3.MaterialTheme
+import io.github.suqi8.coui.kmp.basic.ButtonDefaults
+import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.SnackbarResult
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.overlay.OverlayDialog
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 private const val TAG = "NewPatchPage"
 
+/**
+ * パッチ実行中の進捗・ログ表示と、完了後のインストール処理を担うボディ。
+ */
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun DoPatchBody(modifier: Modifier, navigator: Navigator) {
@@ -82,7 +82,7 @@ fun DoPatchBody(modifier: Modifier, navigator: Navigator) {
             .fillMaxSize()
             .padding(horizontal = 12.dp)
     ) {
-        // ── 狀態指示 ──
+        // ── 状態表示（完了 / 失敗）──
         AnimatedVisibility(
             visible = viewModel.patchState != PatchState.PATCHING,
             enter = fadeIn(),
@@ -105,7 +105,7 @@ fun DoPatchBody(modifier: Modifier, navigator: Navigator) {
                             Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline,
                         contentDescription = null,
                         tint = if (viewModel.patchState == PatchState.FINISHED)
-                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            COUITheme.colorScheme.primary else COUITheme.colorScheme.error,
                         modifier = Modifier.size(32.dp)
                     )
                     Column {
@@ -114,19 +114,19 @@ fun DoPatchBody(modifier: Modifier, navigator: Navigator) {
                                 stringResource(R.string.patch_start) + " ✓"
                             else
                                 stringResource(R.string.copy_error),
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = COUITheme.textStyles.headline1,
                         )
                         Text(
                             text = viewModel.patchApp.app.packageName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = COUITheme.textStyles.body2,
+                            color = COUITheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
                 }
             }
         }
 
-        // ── 進度指示（打包中）──
+        // ── 進捗表示（パッチ中）──
         AnimatedVisibility(
             visible = viewModel.patchState == PatchState.PATCHING,
             enter = fadeIn(),
@@ -144,23 +144,23 @@ fun DoPatchBody(modifier: Modifier, navigator: Navigator) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                    CircularProgressIndicator(size = 28.dp)
                     Column {
                         Text(
                             text = stringResource(R.string.patch_start) + "…",
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = COUITheme.textStyles.headline1,
                         )
                         Text(
                             text = viewModel.patchApp.app.packageName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = COUITheme.textStyles.body2,
+                            color = COUITheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
                 }
             }
         }
 
-        // ── 日誌輸出區域 ──
+        // ── ログ出力エリア ──
         SmallTitle(text = "Log")
         Box(
             modifier = Modifier
@@ -180,15 +180,13 @@ fun DoPatchBody(modifier: Modifier, navigator: Navigator) {
                 ),
         ) {
             ShimmerAnimation(enabled = viewModel.patchState == PatchState.PATCHING) {
-                ProvideTextStyle(MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace)) {
+                ProvideTextStyle(COUITheme.textStyles.footnote1.copy(fontFamily = FontFamily.Monospace)) {
                     val scrollState = rememberLazyListState()
                     LazyColumn(
                         state = scrollState,
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(16.dp))
-
-
                             .padding(horizontal = 16.dp, vertical = 16.dp),
                         overscrollEffect = null
                     ) {
@@ -203,7 +201,7 @@ fun DoPatchBody(modifier: Modifier, navigator: Navigator) {
                                 )
                                 Log.ERROR -> Text(
                                     text = line,
-                                    color = MaterialTheme.colorScheme.error,
+                                    color = COUITheme.colorScheme.error,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 4.dp)
@@ -221,12 +219,20 @@ fun DoPatchBody(modifier: Modifier, navigator: Navigator) {
             }
         }
 
-        // ── 底部操作按鈕 ──
+        // ── 下部操作ボタン ──
         when (viewModel.patchState) {
             PatchState.FINISHED -> {
                 val installFailed = stringResource(R.string.patch_install_failed)
                 val copyError = stringResource(R.string.copy_error)
                 var installation by remember { mutableStateOf<NewPatchViewModel.InstallMethod?>(null) }
+
+                // Shizuku 有効時はパッチ完了と同時にインストールを自動開始する
+                LaunchedEffect(Unit) {
+                    if (ShizukuApi.isReady && installation == null) {
+                        installation = NewPatchViewModel.InstallMethod.SHIZUKU
+                        Log.d(TAG, "Auto installation via Shizuku")
+                    }
+                }
 
                 val onFinish: (Int, String?) -> Unit = { status, message ->
                     scope.launch {
@@ -335,7 +341,9 @@ fun UninstallConfirmationDialog(
         show = show.value,
         onDismissRequest = { show.value = false; onDismiss() },
     ) {
-        Column {
+        Column(
+            modifier = Modifier.padding(horizontal = 24.dp),
+        ) {
             Text(
                 text = stringResource(R.string.patch_uninstall_text),
                 modifier = Modifier.padding(bottom = 16.dp),
@@ -452,11 +460,13 @@ fun InstallDialog(
             onDismissRequest = {},
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CircularProgressIndicator(modifier = Modifier.padding(16.dp).size(48.dp))
+                CircularProgressIndicator(size = 48.dp)
             }
         }
     }

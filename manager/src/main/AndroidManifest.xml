@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".LSPApplication"
@@ -89,7 +90,7 @@
 
         <provider
             android:name=".manager.ConfigProvider"
-            android:authorities="top.nkbe.npatch.manager.provider.config"
+            android:authorities="${applicationId}.manager.provider.config"
             android:exported="true"
             android:enabled="true" />
 

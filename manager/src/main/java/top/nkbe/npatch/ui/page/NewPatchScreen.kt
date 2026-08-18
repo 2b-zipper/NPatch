@@ -1,41 +1,61 @@
 package top.nkbe.npatch.ui.page
 
-import androidx.activity.ComponentActivity
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.suqi8.coui.kmp.basic.ButtonDefaults
+import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import kotlinx.coroutines.launch
 import nkbe.util.NeoPackageManager
 import top.nkbe.npatch.R
+import top.nkbe.npatch.ui.component.NPatchScaffold
+import top.nkbe.npatch.ui.component.NPatchTopAppBar
 import top.nkbe.npatch.ui.page.newpatch.ConfiguringFab
 import top.nkbe.npatch.ui.page.newpatch.ConfiguringTopBar
 import top.nkbe.npatch.ui.page.newpatch.DoPatchBody
 import top.nkbe.npatch.ui.page.newpatch.PatchOptionsBody
-import top.nkbe.npatch.ui.component.NPatchScaffold
-import top.nkbe.npatch.ui.component.NPatchTopAppBar
 import top.nkbe.npatch.ui.util.LocalSnackbarHost
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.PatchState
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.ViewAction
-import top.nkbe.npatch.ui.page.SelectAppsResult
-import androidx.compose.material3.TopAppBarDefaults
-import top.nkbe.npatch.ui.component.compat.TextButton
-import top.nkbe.npatch.ui.component.compat.OverlayDialog
 
 const val ACTION_STORAGE = 0
 const val ACTION_APPLIST = 1
 const val ACTION_INTENT_INSTALL = 2
 
+const val LINE_PACKAGE_NAME = "jp.naver.line.android"
+const val LINE_DOWNLOAD_URL = "https://www.apkmirror.com/uploads/?appcategory=line"
+
+/**
+ * パッチ実行画面。
+ * ストレージからの APK 選択、インストール済みアプリの直接パッチ、インテント経由の APK を扱う。
+ */
 @Composable
 fun NewPatchScreen(
     id: Int,
@@ -44,12 +64,10 @@ fun NewPatchScreen(
     val navigator = LocalNavigator.current
     val viewModel = viewModel<NewPatchViewModel>()
     val snackbarHost = LocalSnackbarHost.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = COUIScrollBehavior()
     val context = LocalContext.current
-    val activityScope = (context as ComponentActivity).lifecycleScope
     val scope = rememberCoroutineScope()
     val errorUnknown = stringResource(R.string.error_unknown)
-    val showSelectModuleDialog = remember { mutableStateOf(false) }
     val apkMimeTypes = arrayOf(
         "application/vnd.android.package-archive",
         "application/zip",
@@ -57,7 +75,10 @@ fun NewPatchScreen(
         "application/octet-stream",
     )
 
-    // 從儲存空間選取 APK
+    // インストール済みアプリが見つからない場合、ダウンロードページへ誘導するダイアログ
+    var showDownloadDialog by remember { mutableStateOf(false) }
+
+    // ストレージから APK を選択
     val storageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { apks ->
         if (apks.isEmpty()) {
             viewModel.reset()
@@ -87,17 +108,17 @@ fun NewPatchScreen(
                 viewModel.dispatch(ViewAction.DoneInit)
             }
             ACTION_APPLIST -> {
-                activityScope.launch {
-                    val result = navigator.navigateForResult<SelectAppsResult>(Route.SelectApps(false, null))
-                    if (result == null) {
-                        viewModel.reset()
-                        navigator.pop()
-                    } else {
-                        val singleApp = result as SelectAppsResult.SingleApp
-                        viewModel.dispatch(ViewAction.ConfigurePatch(singleApp.selected))
-                    }
-                }
+                // インストール済みアプリを直接パッチ対象にする
                 viewModel.dispatch(ViewAction.DoneInit)
+                val lineApp = NeoPackageManager.appList.firstOrNull {
+                    it.app.packageName == LINE_PACKAGE_NAME
+                }
+                if (lineApp != null) {
+                    viewModel.dispatch(ViewAction.ConfigurePatch(lineApp))
+                } else {
+                    // アプリ未インストール: ダウンロードページを開くダイアログを表示する
+                    showDownloadDialog = true
+                }
             }
             ACTION_INTENT_INSTALL -> {
                 data?.let { dataStr ->
@@ -117,7 +138,7 @@ fun NewPatchScreen(
         }
     }
 
-    // 返回鍵攔截
+    // 戻るキーでパッチ中以外は中断して戻る
     BackHandler(enabled = true) {
         if (viewModel.patchState != PatchState.PATCHING) {
             scope.launch { NeoPackageManager.cleanTmpApkDir() }
@@ -126,7 +147,6 @@ fun NewPatchScreen(
         }
     }
 
-    // 主體 UI 結構
     NPatchScaffold(
         topBar = {
             when (viewModel.patchState) {
@@ -135,10 +155,12 @@ fun NewPatchScreen(
                     viewModel.reset()
                     navigator.pop()
                 }
-                // 只有当包名匹配，且动作是 添加 或 替换 时才认为是安装成功
                 PatchState.PATCHING,
                 PatchState.FINISHED,
-                PatchState.ERROR -> NPatchTopAppBar(title = viewModel.patchApp.app.packageName, scrollBehavior = scrollBehavior)
+                PatchState.ERROR -> NPatchTopAppBar(
+                    title = viewModel.patchApp.app.packageName,
+                    scrollBehavior = scrollBehavior,
+                )
                 else -> NPatchTopAppBar(title = "", scrollBehavior = scrollBehavior)
             }
         },
@@ -152,10 +174,7 @@ fun NewPatchScreen(
             when (viewModel.patchState) {
                 PatchState.CONFIGURING -> {
                     PatchOptionsBody(
-                        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-                        onAddEmbed = {
-                            showSelectModuleDialog.value = true
-                        }
+                        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                     )
                 }
                 PatchState.PATCHING,
@@ -166,37 +185,62 @@ fun NewPatchScreen(
                 else -> {}
             }
 
-            OverlayDialog(
-                title = stringResource(R.string.patch_embed_modules),
-                show = showSelectModuleDialog.value,
-                onDismissRequest = { showSelectModuleDialog.value = false },
-                renderInRootScaffold = false,
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        text = stringResource(R.string.patch_from_installed_modules),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            showSelectModuleDialog.value = false
-                            activityScope.launch {
-                                val result = navigator.navigateForResult<SelectAppsResult>(
-                                    Route.SelectApps(true, viewModel.embeddedModules.mapTo(ArrayList()) { it.app.packageName })
-                                )
-                                if (result is SelectAppsResult.MultipleApps) {
-                                    viewModel.embeddedModules = result.selected
-                                }
+            if (showDownloadDialog) {
+                LineDownloadDialog(
+                    onOpenDownload = {
+                        val downloadIntent = Intent(Intent.ACTION_VIEW, LINE_DOWNLOAD_URL.toUri())
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        runCatching { context.startActivity(downloadIntent) }
+                            .onFailure {
+                                scope.launch { snackbarHost.showSnackbar(it.message ?: errorUnknown) }
                             }
-                        },
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    TextButton(
-                        text = stringResource(android.R.string.cancel),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { showSelectModuleDialog.value = false },
-                    )
-                }
+                        viewModel.reset()
+                        navigator.pop()
+                    },
+                    onDismiss = {
+                        viewModel.reset()
+                        navigator.pop()
+                    },
+                )
             }
         }
     }
+}
 
+@Composable
+fun LineDownloadDialog(
+    onOpenDownload: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val show = remember { mutableStateOf(true) }
+    OverlayDialog(
+        title = stringResource(R.string.line_download_dialog_title),
+        show = show.value,
+        onDismissRequest = { show.value = false; onDismiss() },
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 24.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.line_download_dialog_message),
+                modifier = Modifier.padding(bottom = 16.dp),
+            )
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(
+                    text = stringResource(android.R.string.cancel),
+                    onClick = { show.value = false; onDismiss() },
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(20.dp))
+                TextButton(
+                    text = stringResource(R.string.open_download_page),
+                    onClick = { show.value = false; onOpenDownload() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColors(),
+                )
+            }
+        }
+    }
 }

@@ -12,8 +12,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -34,29 +32,25 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
 import coil.compose.AsyncImage
 import top.nkbe.npatch.LSPApplication
-import top.nkbe.npatch.config.Configs
 import top.nkbe.npatch.config.ThemeConfig
 import top.nkbe.npatch.config.ThemeMode
 import top.nkbe.npatch.config.ThemeSettings
-import top.nkbe.npatch.ui.page.AboutScreen
-import top.nkbe.npatch.ui.page.LocalNavigator
-import top.nkbe.npatch.ui.page.MainTab
-import top.nkbe.npatch.ui.page.MainScreen
-import top.nkbe.npatch.ui.page.Navigator
-import top.nkbe.npatch.ui.page.NewPatchScreen
-import top.nkbe.npatch.ui.page.RepositoryDetailScreen
-import top.nkbe.npatch.ui.page.RepositoryScopeFilterScreen
-import top.nkbe.npatch.ui.page.Route
-import top.nkbe.npatch.ui.page.SelectAppsScreen
-import top.nkbe.npatch.ui.page.WelcomeScreen
 import top.nkbe.npatch.config.DEFAULT_CARD_BACKGROUND_ALPHA_PERCENT
 import top.nkbe.npatch.config.DEFAULT_CUSTOM_COLOR
+import top.nkbe.npatch.ui.page.LocalNavigator
+import top.nkbe.npatch.ui.page.MainScreen
+import top.nkbe.npatch.ui.page.MainTab
+import top.nkbe.npatch.ui.page.Navigator
+import top.nkbe.npatch.ui.page.NewPatchScreen
+import top.nkbe.npatch.ui.page.Route
 import top.nkbe.npatch.ui.theme.LSPTheme
 import top.nkbe.npatch.ui.util.LocalBackgroundImagePath
 import top.nkbe.npatch.ui.util.LocalCardBackgroundAlpha
 import top.nkbe.npatch.ui.util.LocalFloatingGlassBottomBar
 import top.nkbe.npatch.ui.util.LocalFloatingGlassBottomBarBlur
 import top.nkbe.npatch.ui.util.LocalSnackbarHost
+import io.github.suqi8.coui.kmp.basic.SnackbarHostState
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 class MainActivity : ComponentActivity() {
 
@@ -155,23 +149,16 @@ class MainActivity : ComponentActivity() {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(MaterialTheme.colorScheme.background)
+                                        .background(COUITheme.colorScheme.background)
                                 )
                             }
                         }
 
                         val snackbarHostState = remember { SnackbarHostState() }
-                        val startRoute = remember {
-                            if (Configs.welcomeSeen) Route.Main() else Route.Welcome()
-                        }
-                        val backStack = remember { mutableStateListOf<NavKey>(startRoute) }
+                        val backStack = remember { mutableStateListOf<NavKey>(Route.Main()) }
                         val navigator = remember { Navigator(backStack) }
-                        val startMainRoute = startRoute as? Route.Main
                         var selectedMainTab by rememberSaveable {
-                            mutableIntStateOf(startMainRoute?.initialTab ?: MainTab.Home.ordinal)
-                        }
-                        var selectedManageTab by rememberSaveable {
-                            mutableIntStateOf(startMainRoute?.initialManageTab ?: 0)
+                            mutableIntStateOf(MainTab.Home.ordinal)
                         }
 
                         CompositionLocalProvider(
@@ -186,50 +173,12 @@ class MainActivity : ComponentActivity() {
                                         MainScreen(
                                             navigator = navigator,
                                             selectedTab = selectedMainTab,
-                                            selectedManageTab = selectedManageTab,
                                             onSelectedTabChange = { selectedMainTab = it },
-                                            onSelectedManageTabChange = { selectedManageTab = it }
-                                        )
-                                    }
-
-                                    entry<Route.About> {
-                                        AboutScreen(onBack = { navigator.pop() })
-                                    }
-
-                                    entry<Route.Welcome> { route ->
-                                        WelcomeScreen(
-                                            reviewMode = route.reviewMode,
-                                            onFinish = {
-                                                backStack.clear()
-                                                backStack.add(Route.Main())
-                                            },
-                                            onReturn = { navigator.pop() }
                                         )
                                     }
 
                                     entry<Route.NewPatch> { route ->
                                         NewPatchScreen(id = route.id, data = route.data)
-                                    }
-
-                                    entry<Route.SelectApps> { route ->
-                                        SelectAppsScreen(
-                                            multiSelect = route.multiSelect,
-                                            initialSelected = route.initialSelected
-                                        )
-                                    }
-
-                                    entry<Route.RepoDetail> { route ->
-                                        RepositoryDetailScreen(
-                                            packageName = route.packageName,
-                                            onBack = { navigator.pop() }
-                                        )
-                                    }
-
-                                    entry<Route.RepoScopeFilter> { route ->
-                                        RepositoryScopeFilterScreen(
-                                            selectedPackageName = route.selectedPackageName,
-                                            onBack = { navigator.pop() }
-                                        )
                                     }
                                 }
                             )

@@ -30,7 +30,7 @@ object Patcher {
         internal val inputApks: List<File>
             get() = apkPaths.map { File(it).absoluteFile }
 
-        fun toStringArray(): Array<String> {
+        fun toStringArray(inputApks: List<File> = apkPaths.map { File(it).absoluteFile }): Array<String> {
             return buildList {
                 add("-o"); add(lspApp.tmpApkDir.absolutePath)
                 add("-p"); add(config.newPackage)
@@ -53,17 +53,26 @@ object Patcher {
                     KeystorePreset.FPA -> add("-fpa")
                     KeystorePreset.CUSTOM -> addAll(arrayOf("-k", MyKeyStore.file.path, Configs.keyStorePassword, Configs.keyStoreAlias, Configs.keyStoreAliasPassword))
                 }
-                addAll(apkPaths)
+                addAll(inputApks.map { it.absolutePath })
             }.toTypedArray()
         }
     }
 
     suspend fun patch(logger: Logger, options: Options) {
         withContext(Dispatchers.IO) {
-            val inputApks = options.inputApks
+            var inputApks = options.inputApks
             validateInputSet(inputApks)
+            // Split APK sets are merged into a single APK before patching, so the
+            // patcher produces one installable APK instead of an APKS archive.
+            if (inputApks.size > 1) {
+                logger.i("Merging ${inputApks.size} split APKs into a single APK...")
+                val mergedApk = lspApp.tmpApkDir.resolve("${options.newPackageName}.apk")
+                mergedApk.delete()
+                SplitMerger.mergeToSingleApk(inputApks, mergedApk, logger)
+                inputApks = listOf(mergedApk)
+            }
             val outputsBeforePatch = currentPatchOutputs()
-            NPatch(logger, *options.toStringArray()).doCommandLine()
+            NPatch(logger, *options.toStringArray(inputApks)).doCommandLine()
 
             val uri = Configs.storageDirectory?.toUri()
                 ?: throw IOException("Uri is null")

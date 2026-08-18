@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="add">Add</string>
     <string name="install">Install</string>
@@ -118,7 +118,6 @@
     <string name="patch_select_dir_title">Select storage directory</string>
     <string name="patch_select_dir_text">Select a directory to store the patched apks</string>
     <string name="patch_select_dir_error">Error when setting storage directory</string>
-    <string name="patch_from_storage">Select apk(s) from storage</string>
     <string name="patch_from_applist">Select an installed app</string>
     <string name="patch_from_installed_modules">Select installed Xposed modules</string>
     <string name="patch_mode">Patch Mode</string>
@@ -136,6 +135,8 @@
     <string name="patch_sigbypasslv1_desc">Adds Java IO and native openat/openat64 redirection so signature-related file reads use the original APK</string>
     <string name="patch_sigbypasslv2">High</string>
     <string name="patch_sigbypasslv2_desc">Builds on Basic by restoring the original AppComponentFactory and hooking getPackageArchiveInfo / hasSigningCertificate for stricter verification paths</string>
+    <string name="patch_sigbypasslv3">Extreme</string>
+    <string name="patch_sigbypasslv3_desc">Builds on High by hooking the PackageInfo(Parcel) constructor so signatures are replaced across binder unparceling paths</string>
     <string name="patch_new_package">Patch New PackageName</string>
     <string name="hint_patch_new_package">Input a new package for app</string>
     <string name="patch_override_version_code">Override version code</string>
@@ -211,6 +212,8 @@
     <string name="settings_manager_cache_success">Manager cache cleared</string>
     <string name="settings_manager_cache_failed">Failed to clear manager cache</string>
     <string name="settings_appearance_theme">Appearance &amp; Theme</string>
+    <string name="settings_modules">Modules</string>
+    <string name="settings_modules_empty">No Xposed modules installed</string>
     <string name="settings_other_settings">Other Settings</string>
     <string name="settings_network">Network</string>
     <string name="settings_dns">DNS</string>
@@ -315,4 +318,44 @@
     <string name="time_minutes_ago">%d minutes ago</string>
     <string name="time_hours_ago">%d hours ago</string>
     <string name="time_days_ago">%d days ago</string>
+
+    <!-- LINE Manager Home -->
+    <string name="line_app_name">LINE</string>
+    <string name="line_installed_version">Installed: v%1$s</string>
+    <string name="line_not_installed">LINE is not installed</string>
+    <string name="line_download_dialog_title">LINE not found</string>
+    <string name="line_download_dialog_message">LINE is not installed. Download the LINE APK from the download page and try patching again.</string>
+    <string name="open_download_page">Open download page</string>
+    <string name="patch_choice_title">Select patch method</string>
+    <string name="patch_installed_line">Patch installed LINE</string>
+    <string name="patch_from_apk">Patch from APK</string>
+    <string name="download_line">Open download page</string>
+    <string name="line_patched">Patched</string>
+    <string name="line_not_patched">Not patched</string>
+    <string name="shizuku">Shizuku</string>
+    <string name="shizuku_request">Request permission</string>
+    <string name="patch_microg_vendor">MicroG vendor</string>
+    <string name="patch_microg_vendor_desc">Select the MicroG-RE provider used for GMS signature spoofing</string>
+    <string name="patch_microg_vendor_revanced">ReVanced GmsCore (app.revanced)</string>
+    <string name="patch_microg_vendor_microg">MicroG (com.google.android.gms)</string>
+    <string name="patch_microg_vendor_custom">Custom</string>
+    <string name="patch_microg_vendor_hint">Package name of the MicroG vendor</string>
+
+    <!-- Knot Release -->
+    <string name="knot_release_title">Knot v%1$s available</string>
+    <string name="knot_release_date">Released %1$s</string>
+    <string name="knot_release_download">Download</string>
+    <string name="knot_release_changelog">Changelog</string>
+    <string name="knot_release_version">v%1$s</string>
+    <string name="knot_release_latest">Latest</string>
+    <string name="knot_releases_title">Knot Releases</string>
+    <string name="knot_releases_loading">Loading…</string>
+    <string name="knot_releases_error">Failed to load releases</string>
+    <string name="knot_releases_empty">No releases found</string>
+    <string name="knot_installed_version">Installed: v%1$s</string>
+    <string name="knot_not_installed">Not installed</string>
+    <string name="knot_installed">Installed</string>
+    <string name="storage_not_set_title">Storage directory not set</string>
+    <string name="storage_not_set_message">The storage directory is not set. Please set it before patching.</string>
+    <string name="go_to_settings">Go to settings</string>
 </resources>

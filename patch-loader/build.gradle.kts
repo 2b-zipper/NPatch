@@ -5,6 +5,7 @@ plugins {
 }
 
 android {
+    ndkVersion = "29.0.13846066"
     defaultConfig {
         multiDexEnabled = false
 

@@ -31,6 +31,11 @@ import top.nkbe.npatch.patch.util.JavaLogger;
 import top.nkbe.npatch.patch.util.Logger;
 import top.nkbe.npatch.patch.util.ManifestParser;
 
+import pxb.android.axml.AxmlReader;
+import pxb.android.axml.AxmlVisitor;
+import pxb.android.axml.AxmlWriter;
+import pxb.android.axml.NodeVisitor;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -39,14 +44,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -87,7 +96,7 @@ public class NPatch {
     @Parameter(names = {"-d", "--debuggable"}, description = "Set app to be debuggable")
     private boolean debuggableFlag = false;
 
-    @Parameter(names = {"-l", "--sigbypasslv"}, description = "Signature bypass mode. 0: None, 1: Basic, 2: High. default 1")
+    @Parameter(names = {"-l", "--sigbypasslv"}, description = "Signature bypass mode. 0: None, 1: Basic, 2: High, 3: Extreme. default 1")
     private int sigbypassLevel = 1;
 
     @Parameter(names = {"--provider"}, description = "Inject Provider to manager data files")
@@ -99,6 +108,12 @@ public class NPatch {
     @Parameter(names = {"--useMicroG"}, description = "Redirect GMS calls to community MicroG")
     private boolean useMicroG = false;
 
+    @Parameter(names = {"--microgVendor"}, description = "MicroG-RE vendor group id. Injects <vendor>.android.gms.SPOOFED_PACKAGE_SIGNATURE / SPOOFED_PACKAGE_NAME / <vendor>.MICROG_PACKAGE_NAME meta-data. Default: app.revanced")
+    private String microgVendor = "app.revanced";
+
+    @Parameter(names = {"--microgSignatureHash"}, description = "Hash algorithm for the SPOOFED_PACKAGE_SIGNATURE value: sha1 or sha256. Default: sha1")
+    private String microgSignatureHash = "sha1";
+
     @Parameter(names = {"--outputLog"}, description = "Output Log to Media")
     private boolean outputLog = true;
 
@@ -107,6 +122,9 @@ public class NPatch {
 
     @Parameter(names = {"-k", "--keystore"}, arity = 4, description = "Set custom signature keystore. Followed by 4 arguments: keystore path, keystore password, keystore alias, keystore alias password")
     private List<String> keystoreArgs = null;
+
+    @Parameter(names = {"--keystoreType"}, description = "Keystore type for the custom signature keystore (BKS, JKS, PKCS12...). Default: inferred from file extension (.bks -> BKS, .p12/.pfx -> PKCS12, else JKS)")
+    private String keystoreType = null;
 
     @Parameter(names = {"-npa", "--npatch-keystore"}, description = "Use built-in NPatch keystore")
     private boolean useNpatchKeystore = false;
@@ -182,8 +200,12 @@ public class NPatch {
             help = true;
         }
         if (sigbypassLevel < Constants.SIGBYPASS_NONE ||
-                sigbypassLevel > Constants.SIGBYPASS_HIGH) {
-            logger.e("Signature bypass level must be between 0 and 2\n");
+                sigbypassLevel > Constants.SIGBYPASS_EXTREME) {
+            logger.e("Signature bypass level must be between 0 and 3\n");
+            help = true;
+        }
+        if (!"sha1".equals(microgSignatureHash) && !"sha256".equals(microgSignatureHash)) {
+            logger.e("MicroG signature hash must be sha1 or sha256\n");
             help = true;
         }
         this.logger = logger;
@@ -247,7 +269,18 @@ public class NPatch {
 
             // sign apk
             try {
-                var keyStore = KeyStore.getInstance("BKS");
+                String keyStoreType = "BKS";
+                if (keystoreArgs != null) {
+                    if (keystoreType != null && !keystoreType.isEmpty()) {
+                        keyStoreType = keystoreType;
+                    } else {
+                        String ksPath = keystoreArgs.get(0).toLowerCase(Locale.ROOT);
+                        if (ksPath.endsWith(".bks")) keyStoreType = "BKS";
+                        else if (ksPath.endsWith(".p12") || ksPath.endsWith(".pfx")) keyStoreType = "PKCS12";
+                        else keyStoreType = "JKS";
+                    }
+                }
+                var keyStore = KeyStore.getInstance(keyStoreType);
                 if (useNpatchKeystore || (!useFpaKeystore && keystoreArgs == null)) {
                     logger.i("Register apk signer with built-in NPatch keystore...");
                     registerBuiltinSigner(keyStore, dstZFile, "assets/npatch.key", NPATCH_KEYSTORE_PASSWORD_ENC, NPATCH_KEY_ALIAS_ENC);
@@ -345,7 +378,8 @@ public class NPatch {
                     newPackage,
                     useMicroG,
                     hideLibs
-                            && sigbypassLevel > Constants.SIGBYPASS_NONE);
+                            && sigbypassLevel > Constants.SIGBYPASS_NONE,
+                    microgVendor);
             final var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
             final var metadata = Base64.getEncoder().encodeToString(configBytes);
             try (var is = new ByteArrayInputStream(modifyManifestFile(manifestEntry.open(), metadata, minSdkVersion, pair.packageName, newPackage, originalSignature))) {
@@ -551,6 +585,35 @@ public class NPatch {
         }
     }
 
+    /**
+     * Computes the hex digest of the original APK signing certificate.
+     * The input is the hex-encoded DER certificate bytes produced by ApkSignatureHelper.
+     *
+     * @param certHex  hex-encoded X.509 certificate (as returned by ApkSignatureHelper)
+     * @param hashAlgo "sha1" or "sha256"
+     */
+    private static String signatureToHexDigest(String certHex, String hashAlgo) throws NoSuchAlgorithmException {
+        byte[] certBytes = hexToBytes(certHex);
+        String algorithm = "sha256".equalsIgnoreCase(hashAlgo) ? "SHA-256" : "SHA-1";
+        byte[] digest = MessageDigest.getInstance(algorithm).digest(certBytes);
+        StringBuilder sb = new StringBuilder(digest.length * 2);
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    private static byte[] hexToBytes(String hex) {
+        if (hex == null || hex.isEmpty()) return new byte[0];
+        int len = hex.length();
+        byte[] out = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            out[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                    | Character.digit(hex.charAt(i + 1), 16));
+        }
+        return out;
+    }
+
     private byte[] modifyManifestFile(InputStream is, String metadata, int minSdkVersion, String originPackage, String newPackage, String originalSignature) throws IOException {
         ModificationProperty property = new ModificationProperty();
 
@@ -584,11 +647,22 @@ public class NPatch {
         // 注入 MicroG 偽裝簽名與權限
         if (useMicroG && originalSignature != null && !originalSignature.isEmpty()) {
             try {
+                // Legacy fake-signature (VirtualApp / old MicroG mechanism) — kept for compatibility.
                 addOrReplaceMetaData(property, "fake-signature", originalSignature);
                 property.addUsesPermission("android.permission.FAKE_PACKAGE_SIGNATURE");
-                logger.d("Added fake-signature metadata for MicroG compatibility");
+
+                // ReVanced/Morphe MicroG-RE mechanism: GmsCore forks read these meta-data entries
+                // via PackageSpoofUtils and present the app as the original identity.
+                // SPOOFED_PACKAGE_SIGNATURE must be the hex digest of the original cert in the
+                // same format GmsCore computes (SHA-1 by default, SHA-256 for newer forks).
+                String gmsPackage = microgVendor + ".android.gms";
+                String hexDigest = signatureToHexDigest(originalSignature, microgSignatureHash);
+                addOrReplaceMetaData(property, gmsPackage + ".SPOOFED_PACKAGE_SIGNATURE", hexDigest);
+                addOrReplaceMetaData(property, gmsPackage + ".SPOOFED_PACKAGE_NAME", originPackage);
+                addOrReplaceMetaData(property, microgVendor + ".MICROG_PACKAGE_NAME", gmsPackage);
+                logger.d("Injected MicroG-RE spoof metadata for " + gmsPackage + " (hash=" + microgSignatureHash + ")");
             } catch (Exception e) {
-                logger.e("Failed to add fake-signature: " + e.getMessage());
+                logger.e("Failed to add MicroG metadata: " + e.getMessage());
             }
         }
 
@@ -611,12 +685,86 @@ public class NPatch {
 
         }
 
+        byte[] modified;
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             new ManifestEditor(is, os, property).processManifest();
-            return os.toByteArray();
+            modified = os.toByteArray();
         } finally {
             if (is != null) is.close();
         }
+        return rewriteC2dmManifest(modified);
+    }
+
+    /**
+     * Rewrites MicroG-RE-specific C2DM strings in the already-generated binary
+     * manifest. This stays in NPatch and does not change the shared ManifestEditor.
+     */
+    private byte[] rewriteC2dmManifest(byte[] manifest) throws IOException {
+        Map<String, String> replacements = c2dmReplacements();
+        if (replacements.isEmpty()) {
+            return manifest;
+        }
+
+        AxmlReader reader = new AxmlReader(manifest);
+        AxmlWriter writer = new AxmlWriter();
+        reader.accept(new AxmlVisitor(writer) {
+            @Override
+            public NodeVisitor child(String ns, String name) {
+                return new C2dmManifestVisitor(super.child(ns, name), replacements);
+            }
+        });
+        return writer.toByteArray();
+    }
+
+    /**
+     * Visitor used only by NPatch to replace exact attribute string values at
+     * every depth, including receiver intent-filter action attributes.
+     */
+    private static final class C2dmManifestVisitor extends NodeVisitor {
+        private final Map<String, String> replacements;
+
+        C2dmManifestVisitor(NodeVisitor nv, Map<String, String> replacements) {
+            super(nv);
+            this.replacements = replacements;
+        }
+
+        @Override
+        public NodeVisitor child(String ns, String name) {
+            NodeVisitor child = super.child(ns, name);
+            return child == null ? null : new C2dmManifestVisitor(child, replacements);
+        }
+
+        @Override
+        public void attr(String ns, String name, int resourceId, int type, Object obj) {
+            if (obj instanceof String) {
+                String replacement = replacements.get(obj);
+                if (replacement != null) {
+                    obj = replacement;
+                }
+            }
+            super.attr(ns, name, resourceId, type, obj);
+        }
+    }
+
+    /**
+     * When --useMicroG targets a vendor fork (e.g. MicroG-RE), the fork delivers FCM
+     * messages with a vendor-namespaced action and protects the receiver with a
+     * vendor-namespaced SEND permission. The app's manifest still filters on the
+     * original com.google.android.c2dm.* entries, so delivery never matches.
+     * Rewrite the c2dm manifest entries to the vendor namespace.
+     */
+    private Map<String, String> c2dmReplacements() {
+        if (!useMicroG || "com.google".equals(microgVendor)) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> replacements = new HashMap<>();
+        String vendorPrefix = microgVendor + ".android.c2dm";
+        replacements.put("com.google.android.c2dm.intent.RECEIVE", vendorPrefix + ".intent.RECEIVE");
+        replacements.put("com.google.android.c2dm.permission.SEND", vendorPrefix + ".permission.SEND");
+        replacements.put("com.google.android.c2dm.permission.RECEIVE", vendorPrefix + ".permission.RECEIVE");
+        replacements.put("com.google.android.c2dm.permission.C2D_MESSAGE", vendorPrefix + ".permission.C2D_MESSAGE");
+        logger.d("MicroG-RE: rewriting c2dm manifest entries to " + vendorPrefix + ".*");
+        return replacements;
     }
 
     private static void addOrReplaceMetaData(ModificationProperty property, String name, String value) {

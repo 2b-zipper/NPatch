@@ -1,5 +1,6 @@
 package top.nkbe.npatch.ui.viewmodel
 
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -8,17 +9,25 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
-import top.nkbe.npatch.Patcher
-import top.nkbe.npatch.share.PatchConfig
+import nkbe.util.ModuleMetadataReader
+import nkbe.util.ModulePipeline
 import nkbe.util.NeoPackageManager
 import nkbe.util.NeoPackageManager.AppInfo
+import top.nkbe.npatch.Patcher
+import top.nkbe.npatch.config.ConfigManager
+import top.nkbe.npatch.database.entity.Module
+import top.nkbe.npatch.lspApp
 import top.nkbe.npatch.patch.util.Logger
 import top.nkbe.npatch.share.Constants
+import top.nkbe.npatch.share.PatchConfig
 
 class NewPatchViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "NewPatchViewModel"
+
+        /** パッチ成功時に自動でスコープ登録するモジュール（Knot） */
+        private const val KNOT_PACKAGE_NAME = "app.zipper.knot"
     }
 
     enum class PatchState {
@@ -49,7 +58,8 @@ class NewPatchViewModel : ViewModel() {
     var overrideVersionCodeValue by mutableStateOf("1")
     var sigBypassLevel by mutableStateOf(2)
     var injectProvider by mutableStateOf(false)
-    var useMicroG by mutableStateOf(false)
+    var useMicroG by mutableStateOf(true)
+    var microgVendor by mutableStateOf("app.revanced")
     var outputLog by mutableStateOf(true)
     var hideLibs by mutableStateOf(false)
     var embeddedModules by mutableStateOf<List<AppInfo>>(emptyList())
@@ -100,7 +110,8 @@ class NewPatchViewModel : ViewModel() {
         overrideVersionCodeValue = "1"
         sigBypassLevel = 2
         injectProvider = false
-        useMicroG = false
+        useMicroG = true
+        microgVendor = "app.revanced"
         outputLog = true
         hideLibs = false
         embeddedModules = emptyList()
@@ -137,7 +148,21 @@ class NewPatchViewModel : ViewModel() {
         sigBypassLevel = patchSigBypassLevel
         hideLibs = patchHideLibs
         overrideVersionCodeValue = patchVersionCode.toString()
-        val config = PatchConfig(useManager, debuggable, overrideVersionCode, patchVersionCode, patchSigBypassLevel, null, null, injectProvider, outputLog, newPackageName, useMicroG, patchHideLibs)
+        val config = PatchConfig(
+            useManager,
+            debuggable,
+            overrideVersionCode,
+            patchVersionCode,
+            patchSigBypassLevel,
+            null,
+            null,
+            injectProvider,
+            outputLog,
+            newPackageName,
+            useMicroG,
+            patchHideLibs,
+            microgVendor,
+        )
         patchOptions = Patcher.Options(
             newPackageName = newPackageName,
             config = config,
@@ -151,6 +176,10 @@ class NewPatchViewModel : ViewModel() {
         logger.i("Launch Patch")
         patchState = try {
             Patcher.patch(logger, patchOptions)
+            // このマネージャにはモジュール管理画面が無いため、
+            // パッチ成功時に Knot モジュールを自動でスコープ登録する
+            runCatching { autoScopeKnot() }
+                .onFailure { logger.e("Auto-scope Knot failed: ${it.message}") }
             PatchState.FINISHED
         } catch (t: Throwable) {
             logger.e(t.message.orEmpty())
@@ -159,5 +188,31 @@ class NewPatchViewModel : ViewModel() {
         } finally {
             NeoPackageManager.cleanTmpApkDir()
         }
+    }
+
+    private suspend fun autoScopeKnot() {
+        val pm = lspApp.packageManager
+        val knotInfo = runCatching {
+            pm.getApplicationInfo(KNOT_PACKAGE_NAME, PackageManager.GET_META_DATA)
+        }.getOrNull()
+        if (knotInfo == null) {
+            logger.i("Knot がインストールされていないため、自動スコープ登録をスキップ")
+            return
+        }
+        val meta = runCatching {
+            ModuleMetadataReader.read(
+                pm.getPackageInfo(KNOT_PACKAGE_NAME, PackageManager.GET_META_DATA),
+                pm,
+            )
+        }.getOrNull()
+        if (meta == null || meta.pipeline == ModulePipeline.UNSUPPORTED) {
+            logger.i("Knot は対応していないモジュールのため、自動スコープ登録をスキップ")
+            return
+        }
+        ConfigManager.activateModule(
+            patchApp.app.packageName,
+            Module(knotInfo.packageName, knotInfo.sourceDir),
+        )
+        logger.i("Knot を ${patchApp.app.packageName} にスコープ登録しました")
     }
 }

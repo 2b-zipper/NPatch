@@ -1,45 +1,42 @@
 package top.nkbe.npatch.ui.page.newpatch
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.CloudSync
+import androidx.compose.material.icons.outlined.Output
+import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import top.nkbe.npatch.R
 import top.nkbe.npatch.share.Constants
 import top.nkbe.npatch.ui.component.NPatchTopAppBar
-import top.nkbe.npatch.ui.component.SelectionColumn
-import top.nkbe.npatch.ui.component.SelectionColumnScope.SelectionItem
-import top.nkbe.npatch.ui.component.settings.SettingsEditor
-import top.nkbe.npatch.ui.util.backgroundAwareCardColors
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.ViewAction
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarScrollBehavior
-import top.nkbe.npatch.ui.component.compat.DropdownEntry
-import top.nkbe.npatch.ui.component.compat.DropdownItem
-import top.nkbe.npatch.ui.component.compat.SmallTitle
-import top.nkbe.npatch.ui.component.compat.OverlayDropdownPreference
-import top.nkbe.npatch.ui.component.compat.SwitchPreference
-import androidx.compose.material3.MaterialTheme
+import io.github.suqi8.coui.kmp.basic.DropdownEntry
+import io.github.suqi8.coui.kmp.basic.DropdownItem
+import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.IconButton
+import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.TextField
+import io.github.suqi8.coui.kmp.preference.OverlayDropdownPreference
+import io.github.suqi8.coui.kmp.preference.SwitchPreference
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 @Composable
-fun ConfiguringTopBar(scrollBehavior: TopAppBarScrollBehavior, onBackClick: () -> Unit) {
+fun ConfiguringTopBar(scrollBehavior: ScrollBehavior, onBackClick: () -> Unit) {
     NPatchTopAppBar(
         title = stringResource(R.string.screen_new_patch),
         scrollBehavior = scrollBehavior,
@@ -65,11 +62,11 @@ fun ConfiguringFab() {
             Icon(
                 imageVector = Icons.Outlined.AutoFixHigh,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary
+                tint = COUITheme.colorScheme.onPrimary
             )
             Text(
                 text = stringResource(R.string.patch_start),
-                color = MaterialTheme.colorScheme.onPrimary
+                color = COUITheme.colorScheme.onPrimary
             )
         }
     }
@@ -95,10 +92,13 @@ fun sigBypassLvDesc(level: Int): String {
     }
 }
 
+/**
+ * パッチオプション画面。
+ * 署名バイパス・MicroG（ベンダー指定込み）・デバッグなどの詳細設定を提供する。
+ */
 @Composable
-fun PatchOptionsBody(modifier: Modifier, onAddEmbed: () -> Unit) {
+fun PatchOptionsBody(modifier: Modifier) {
     val viewModel = viewModel<NewPatchViewModel>()
-    val itemShape = RoundedCornerShape(16.dp)
 
     Column(
         modifier = modifier
@@ -106,68 +106,21 @@ fun PatchOptionsBody(modifier: Modifier, onAddEmbed: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(bottom = 84.dp)
     ) {
-        SmallTitle(text = stringResource(R.string.patch_mode))
-
-        // ── 應用資訊 ──
+        // ── アプリ情報 ──
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 12.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp),
         ) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-                Text(text = viewModel.patchApp.label, style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    text = viewModel.patchApp.app.packageName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(text = viewModel.patchApp.label, style = COUITheme.textStyles.headline1)
+            Text(
+                text = viewModel.patchApp.app.packageName,
+                style = COUITheme.textStyles.body2,
+                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+            )
         }
 
-        // ── 修補模式選擇 ──
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .padding(bottom = 16.dp),
-        ) {
-            SelectionColumn(Modifier.padding(8.dp)) {
-                SelectionItem(
-                    modifier = Modifier.clip(itemShape),
-                    selected = viewModel.useManager,
-                    onClick = { viewModel.setUseManager(true) },
-                    icon = Icons.Outlined.Api,
-                    title = stringResource(R.string.patch_local),
-                    desc = stringResource(R.string.patch_local_desc)
-                )
-                SelectionItem(
-                    modifier = Modifier.clip(itemShape),
-                    selected = !viewModel.useManager,
-                    onClick = { viewModel.setUseManager(false) },
-                    icon = Icons.Outlined.WorkOutline,
-                    title = stringResource(R.string.patch_integrated),
-                    desc = stringResource(R.string.patch_integrated_desc),
-                    extraContent = {
-                        val embedText = if (viewModel.embeddedModules.isNotEmpty()) {
-                            stringResource(R.string.patch_embed_modules) + " (${viewModel.embeddedModules.size})"
-                        } else {
-                            stringResource(R.string.patch_embed_modules)
-                        }
-                        Text(
-                            text = embedText,
-                            modifier = Modifier
-                                .padding(top = 8.dp)
-                                .clickable(onClick = onAddEmbed),
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                )
-            }
-        }
-
-        // ── 進階配置 ──
+        // ── 詳細設定 ──
         SmallTitle(text = stringResource(R.string.patch_advanced))
         Column(
             modifier = Modifier
@@ -176,69 +129,6 @@ fun PatchOptionsBody(modifier: Modifier, onAddEmbed: () -> Unit) {
                 .padding(bottom = 16.dp),
         ) {
             Column(Modifier.padding(vertical = 4.dp)) {
-                SettingsEditor(
-                    Modifier.padding(horizontal = 12.dp),
-                    stringResource(R.string.patch_new_package),
-                    viewModel.newPackageName,
-                    onValueChange = { viewModel.newPackageName = it },
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.patch_debuggable),
-                    startAction = { Icon(Icons.Outlined.BugReport, null) },
-                    checked = viewModel.debuggable,
-                    onCheckedChange = { viewModel.debuggable = it }
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.patch_override_version_code),
-                    summary = stringResource(R.string.patch_override_version_code_desc),
-                    startAction = { Icon(Icons.Outlined.Layers, null) },
-                    checked = viewModel.overrideVersionCode,
-                    onCheckedChange = { viewModel.overrideVersionCode = it }
-                )
-                if (viewModel.overrideVersionCode) {
-                    SettingsEditor(
-                        Modifier.padding(horizontal = 12.dp),
-                        stringResource(R.string.patch_custom_version_code),
-                        viewModel.overrideVersionCodeValue,
-                        onValueChange = { value ->
-                            viewModel.overrideVersionCodeValue = value.filter { it in '0'..'9' }
-                        },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-                }
-                SwitchPreference(
-                    title = stringResource(R.string.patch_inject_mt_provider),
-                    summary = stringResource(R.string.patch_inject_mt_provider_desc),
-                    startAction = { Icon(Icons.Outlined.AddCard, null) },
-                    checked = viewModel.injectProvider,
-                    onCheckedChange = { viewModel.injectProvider = it }
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.patch_use_microg),
-                    summary = stringResource(R.string.patch_use_microg_desc),
-                    startAction = { Icon(Icons.Outlined.CloudSync, null) },
-                    checked = viewModel.useMicroG,
-                    onCheckedChange = { viewModel.useMicroG = it }
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.patch_output_log_to_media),
-                    summary = stringResource(R.string.patch_output_log_to_media_desc),
-                    startAction = { Icon(Icons.Outlined.Output, null) },
-                    checked = viewModel.outputLog,
-                    onCheckedChange = { viewModel.outputLog = it }
-                )
-                SwitchPreference(
-                    title = stringResource(R.string.patch_hide_libs),
-                    summary = stringResource(R.string.patch_hide_libs_desc),
-                    startAction = { Icon(Icons.Outlined.VisibilityOff, null) },
-                    checked = viewModel.hideLibs &&
-                        viewModel.sigBypassLevel > Constants.SIGBYPASS_NONE,
-                    onCheckedChange = {
-                        viewModel.hideLibs =
-                            it &&
-                                viewModel.sigBypassLevel > Constants.SIGBYPASS_NONE
-                    }
-                )
                 val maxSigBypassLevel = Constants.SIGBYPASS_HIGH
                 val sigBypassEntries = listOf(
                     DropdownEntry(
@@ -262,7 +152,80 @@ fun PatchOptionsBody(modifier: Modifier, onAddEmbed: () -> Unit) {
                     startAction = { Icon(Icons.Outlined.Security, null) },
                     entries = sigBypassEntries
                 )
+                SwitchPreference(
+                    title = stringResource(R.string.patch_hide_libs),
+                    summary = stringResource(R.string.patch_hide_libs_desc),
+                    startAction = { Icon(Icons.Outlined.VisibilityOff, null) },
+                    checked = viewModel.hideLibs &&
+                        viewModel.sigBypassLevel > Constants.SIGBYPASS_NONE,
+                    onCheckedChange = {
+                        viewModel.hideLibs =
+                            it && viewModel.sigBypassLevel > Constants.SIGBYPASS_NONE
+                    }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.patch_use_microg),
+                    summary = stringResource(R.string.patch_use_microg_desc),
+                    startAction = { Icon(Icons.Outlined.CloudSync, null) },
+                    checked = viewModel.useMicroG,
+                    onCheckedChange = { viewModel.useMicroG = it }
+                )
+                if (viewModel.useMicroG) {
+                    MicrogVendorPreference()
+                }
+                SwitchPreference(
+                    title = stringResource(R.string.patch_debuggable),
+                    startAction = { Icon(Icons.Outlined.BugReport, null) },
+                    checked = viewModel.debuggable,
+                    onCheckedChange = { viewModel.debuggable = it }
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.patch_output_log_to_media),
+                    summary = stringResource(R.string.patch_output_log_to_media_desc),
+                    startAction = { Icon(Icons.Outlined.Output, null) },
+                    checked = viewModel.outputLog,
+                    onCheckedChange = { viewModel.outputLog = it }
+                )
             }
         }
+    }
+}
+
+private val MICROG_VENDOR_PRESETS = listOf(
+    "app.revanced" to R.string.patch_microg_vendor_revanced,
+    "com.google.android.gms" to R.string.patch_microg_vendor_microg,
+)
+
+@Composable
+private fun MicrogVendorPreference() {
+    val viewModel = viewModel<NewPatchViewModel>()
+    val customLabel = stringResource(R.string.patch_microg_vendor_custom)
+    val items = MICROG_VENDOR_PRESETS.map { (_, labelRes) -> stringResource(labelRes) } + customLabel
+    val selectedIndex = MICROG_VENDOR_PRESETS.indexOfFirst { it.first == viewModel.microgVendor }
+        .takeIf { it >= 0 } ?: items.lastIndex
+
+    OverlayDropdownPreference(
+        title = stringResource(R.string.patch_microg_vendor),
+        summary = stringResource(R.string.patch_microg_vendor_desc),
+        items = items,
+        selectedIndex = selectedIndex,
+        startAction = { Icon(Icons.Outlined.CloudSync, null) },
+        onSelectedIndexChange = { index ->
+            MICROG_VENDOR_PRESETS.getOrNull(index)?.let { (vendor, _) ->
+                viewModel.microgVendor = vendor
+            }
+        }
+    )
+
+    // カスタム指定時はパッケージ名を直接入力する
+    if (selectedIndex == items.lastIndex) {
+        TextField(
+            value = viewModel.microgVendor,
+            onValueChange = { viewModel.microgVendor = it },
+            label = stringResource(R.string.patch_microg_vendor_hint),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+        )
     }
 }

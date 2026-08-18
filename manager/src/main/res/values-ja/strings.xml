@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="add">追加</string>
     <string name="install">インストール</string>
@@ -47,7 +47,6 @@
     <string name="patch_select_dir_title">ディレクトリの選択</string>
     <string name="patch_select_dir_text">パッチを適用したapkを保存するディレクトリを選択してください</string>
     <string name="patch_select_dir_error">ディレクトリの設定中にエラーが発生しました</string>
-    <string name="patch_from_storage">ストレージからapkを選択</string>
     <string name="patch_from_applist">インストールされているアプリを選択</string>
     <string name="patch_mode">パッチモード</string>
     <string name="patch_local">ローカル</string>
@@ -60,6 +59,7 @@
     <string name="patch_sigbypasslv0">lv0: オフ</string>
     <string name="patch_sigbypasslv1">lv1: PMをバイパス</string>
     <string name="patch_sigbypasslv2">lv2: PMをバイパス + openat (libc)</string>
+    <string name="patch_sigbypasslv3">lv3: Parcel生成をフック</string>
     <string name="patch_override_version_code">バージョンコードを上書き</string>
     <string name="patch_override_version_code_desc">パッチを適用するアプリのバージョンコードをカスタム値に上書きします。既定値は1です。\nこれにより、より多くの場合でダウングレードインストールが可能になります。アプリが通常時に認識するバージョンコードには影響は与えません。</string>
     <string name="patch_custom_version_code">カスタムバージョンコード</string>
@@ -90,4 +90,46 @@
     <string name="patch_output_log_to_media_desc">Xposedログとフレームワーク起動ログをMediaディレクトリに出力します。</string>
     <string name="settings_card_background_alpha">カード背景の不透明度</string>
     <string name="settings_card_background_alpha_summary">カスタム背景画像が有効な場合に適用されます</string>
+    <!-- Settings Modules -->
+    <string name="settings_modules">モジュール</string>
+    <string name="settings_modules_empty">Xposedモジュールがインストールされていません</string>
+    <!-- LINE Manager Home -->
+    <string name="line_app_name">LINE</string>
+    <string name="line_installed_version">インストール済み: v%1$s</string>
+    <string name="line_not_installed">LINEがインストールされていません</string>
+    <string name="line_download_dialog_title">LINEが見つかりません</string>
+    <string name="line_download_dialog_message">LINEがインストールされていません。ダウンロードページからLINE APKを取得して再度パッチしてください。</string>
+    <string name="open_download_page">ダウンロードページを開く</string>
+    <string name="patch_choice_title">パッチ方法を選択</string>
+    <string name="patch_installed_line">インストール済みのLINEをパッチ</string>
+    <string name="patch_from_apk">APKからパッチ</string>
+    <string name="download_line">ダウンロードページを開く</string>
+    <string name="line_patched">パッチ適用済み</string>
+    <string name="line_not_patched">未パッチ</string>
+    <string name="shizuku">Shizuku</string>
+    <string name="shizuku_request">権限をリクエスト</string>
+    <string name="patch_microg_vendor">MicroG ベンダー</string>
+    <string name="patch_microg_vendor_desc">GMS署名偽装に使用するMicroG-REプロバイダーを選択します</string>
+    <string name="patch_microg_vendor_revanced">ReVanced GmsCore (app.revanced)</string>
+    <string name="patch_microg_vendor_microg">MicroG (com.google.android.gms)</string>
+    <string name="patch_microg_vendor_custom">カスタム</string>
+    <string name="patch_microg_vendor_hint">MicroGベンダーのパッケージ名</string>
+
+    <!-- Knot Release -->
+    <string name="knot_release_title">Knot v%1$s が利用可能です</string>
+    <string name="knot_release_date">%1$s リリース</string>
+    <string name="knot_release_download">ダウンロード</string>
+    <string name="knot_release_changelog">変更履歴</string>
+    <string name="knot_release_version">v%1$s</string>
+    <string name="knot_release_latest">最新</string>
+    <string name="knot_releases_title">Knot リリース一覧</string>
+    <string name="knot_releases_loading">読み込み中…</string>
+    <string name="knot_releases_error">リリースの読み込みに失敗しました</string>
+    <string name="knot_releases_empty">リリースが見つかりません</string>
+    <string name="knot_installed_version">インストール済み: v%1$s</string>
+    <string name="knot_not_installed">未インストール</string>
+    <string name="knot_installed">インストール済み</string>
+    <string name="storage_not_set_title">保存先フォルダが未設定です</string>
+    <string name="storage_not_set_message">保存先フォルダ (URI) が設定されていません。パッチ前に設定してください。</string>
+    <string name="go_to_settings">設定画面へ</string>
 </resources>

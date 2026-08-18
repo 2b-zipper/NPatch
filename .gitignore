@@ -19,3 +19,9 @@ libxposed
 /out
 /.idea
 *.log
+
+# 生成物（再パッチ済みAPK）はリポジトリにコミットしない
+LINE_v26.10.1-1-npatched.apk
+
+# AIツールのローカルメタデータはコミットしない
+.serena/

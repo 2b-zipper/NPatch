@@ -39,22 +39,37 @@ data class ApkInstallSet(
 
             val packageManager = context.packageManager
             val parsed = canonicalFiles.map { file ->
-                val packageInfo = packageManager.getPackageArchiveInfo(
-                    file.absolutePath,
-                    PackageManager.GET_SIGNING_CERTIFICATES,
-                ) ?: throw IOException("Unable to parse APK: ${file.name}")
-                ParsedApk(
-                    file = file,
-                    packageName = packageInfo.packageName,
-                    versionCode = PackageInfoCompat.getLongVersionCode(packageInfo),
-                    splitName = readSplitName(file),
-                    signerDigest = packageInfo.signingInfo
-                        ?.apkContentsSigners
-                        ?.map { signature -> sha256(signature.toByteArray()) }
-                        ?.sorted()
-                        ?.joinToString(":")
-                        .orEmpty(),
-                )
+                val manifest = readManifest(file)
+                val packageInfo = runCatching {
+                    packageManager.getPackageArchiveInfo(
+                        file.absolutePath,
+                        PackageManager.GET_SIGNING_CERTIFICATES,
+                    )
+                }.getOrNull()
+                if (packageInfo != null) {
+                    ParsedApk(
+                        file = file,
+                        packageName = packageInfo.packageName,
+                        versionCode = PackageInfoCompat.getLongVersionCode(packageInfo),
+                        splitName = manifest.splitName,
+                        signerDigest = packageInfo.signingInfo
+                            ?.apkContentsSigners
+                            ?.map { signature -> sha256(signature.toByteArray()) }
+                            ?.sorted()
+                            ?.joinToString(":")
+                            .orEmpty(),
+                    )
+                } else {
+                    // Split APKs cannot be parsed standalone by getPackageArchiveInfo
+                    // (PackageParser requires PARSE_IS_SPLIT). Fall back to the manifest.
+                    ParsedApk(
+                        file = file,
+                        packageName = manifest.packageName,
+                        versionCode = null,
+                        splitName = manifest.splitName,
+                        signerDigest = null,
+                    )
+                }
             }
 
             val baseCandidates = parsed.filter { it.splitName.isNullOrBlank() }
@@ -62,18 +77,22 @@ data class ApkInstallSet(
                 throw IOException("APK install set must contain exactly one base APK")
             }
             val base = baseCandidates.single()
+            val basePackageName = base.packageName
+                ?: throw IOException("Unable to determine package name of base APK: ${base.file.name}")
+            val baseVersionCode = base.versionCode
+                ?: throw IOException("Unable to determine version code of base APK: ${base.file.name}")
             parsed.filterNot { it === base }.forEach { split ->
-                if (split.packageName != base.packageName) {
+                if (split.packageName != null && split.packageName != basePackageName) {
                     throw IOException(
-                        "Mixed packages in APK set: ${base.packageName} and ${split.packageName}",
+                        "Mixed packages in APK set: $basePackageName and ${split.packageName}",
                     )
                 }
-                if (split.versionCode != base.versionCode) {
+                if (split.versionCode != null && split.versionCode != baseVersionCode) {
                     throw IOException(
-                        "Mixed version codes in APK set: ${base.versionCode} and ${split.versionCode}",
+                        "Mixed version codes in APK set: $baseVersionCode and ${split.versionCode}",
                     )
                 }
-                if (split.signerDigest != base.signerDigest) {
+                if (split.signerDigest != null && split.signerDigest != base.signerDigest) {
                     throw IOException("APK signatures do not match: ${split.file.name}")
                 }
             }
@@ -99,21 +118,20 @@ data class ApkInstallSet(
                         ?: "base.apk",
                 )
             }
-            return ApkInstallSet(base.packageName, base.versionCode, entries)
+            return ApkInstallSet(basePackageName, baseVersionCode, entries)
         }
 
-        private fun readSplitName(file: File): String? = ZipFile(file).use { zip ->
+        private fun readManifest(file: File): ManifestData = ZipFile(file).use { zip ->
             val manifest = zip.getEntry("AndroidManifest.xml")
                 ?: throw IOException("APK has no AndroidManifest.xml: ${file.name}")
             zip.getInputStream(manifest).use { input ->
                 val parsed = ManifestParser.parseManifestFile(input)
                     ?: throw IOException("Unable to parse AndroidManifest.xml: ${file.name}")
-                if (parsed.packageName.isNullOrBlank()) {
-                    throw IOException("APK manifest has no package name: ${file.name}")
-                }
-                parsed.splitName
+                ManifestData(parsed.packageName, parsed.splitName)
             }
         }
+
+        private data class ManifestData(val packageName: String?, val splitName: String?)
 
         private fun splitSessionName(splitName: String): String {
             val safeName = splitName.replace(Regex("[^A-Za-z0-9._-]"), "_")
@@ -128,10 +146,10 @@ data class ApkInstallSet(
 
         private data class ParsedApk(
             val file: File,
-            val packageName: String,
-            val versionCode: Long,
+            val packageName: String?,
+            val versionCode: Long?,
             val splitName: String?,
-            val signerDigest: String,
+            val signerDigest: String?,
         )
     }
 }

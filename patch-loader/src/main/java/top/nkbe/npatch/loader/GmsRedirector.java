@@ -10,6 +10,9 @@ import android.content.pm.Signature;
 import android.net.Uri;
 import android.util.Log;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import top.nkbe.npatch.share.Constants;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -28,9 +31,13 @@ public class GmsRedirector {
 
     private static String targetGms = null;
     private static String originalSignature;
+    private static String vendorPackage = null;
 
-    public static void activate(Context context, String origSig) {
+    public static void activate(Context context, String origSig, String vendor, ClassLoader appClassLoader) {
         originalSignature = origSig;
+        if (vendor != null && !vendor.isEmpty()) {
+            vendorPackage = vendor + ".android.gms";
+        }
 
         targetGms = findInstalledMicroG(context);
         if (targetGms == null) {
@@ -39,18 +46,29 @@ public class GmsRedirector {
         }
 
         Log.i(TAG, "Activating GMS redirect: " + REAL_GMS + " -> " + targetGms);
+        setupC2dmRedirects();
 
         hookIntentSetPackage();
+        hookIntentSetAction();
+        hookIntentGetAction();
         hookIntentSetComponent();
         hookIntentResolve();
         hookContentResolverAcquire();
         hookPackageManagerGetPackageInfo(context);
+        ClassLoader cl = appClassLoader != null ? appClassLoader : context.getClassLoader();
 
         Log.i(TAG, "GMS redirect hooks installed");
     }
 
     private static String findInstalledMicroG(Context context) {
         PackageManager pm = context.getPackageManager();
+        // Vendor-specific package first (e.g. app.revanced.android.gms), then known community builds.
+        if (vendorPackage != null) {
+            try {
+                pm.getPackageInfo(vendorPackage, 0);
+                return vendorPackage;
+            } catch (PackageManager.NameNotFoundException ignored) {}
+        }
         for (String pkg : MICROG_PACKAGES) {
             try {
                 pm.getPackageInfo(pkg, 0);
@@ -81,6 +99,42 @@ public class GmsRedirector {
         return null;
     }
 
+    // C2DM intent action -> vendor-namespaced equivalent, derived from targetGms.
+    // Empty unless targetGms uses a vendor c2dm namespace (e.g. app.revanced.android.gms).
+    private static String vendorC2dmPrefix = null;
+    private static final Map<String, String> c2dmRedirectMap = new HashMap<>();
+    private static final String[] C2DM_STANDARD_ACTIONS = {
+            "com.google.android.c2dm.intent.REGISTER",
+            "com.google.android.c2dm.intent.RECEIVE",
+            "com.google.android.c2dm.intent.UNREGISTER",
+            "com.google.android.c2dm.intent.REGISTRATION",
+    };
+
+    /**
+     * Derive the vendor c2dm action prefix from targetGms and populate c2dmRedirectMap.
+     * e.g. "app.revanced.android.gms" -> "app.revanced.android.c2dm".
+     * For forks that use the standard c2dm actions (e.g. org.microg.gms), the prefix
+     * stays null and the map stays empty (no redirect).
+     */
+    private static void setupC2dmRedirects() {
+        vendorC2dmPrefix = null;
+        c2dmRedirectMap.clear();
+        if (targetGms != null && targetGms.endsWith(".android.gms")) {
+            vendorC2dmPrefix = targetGms.substring(0, targetGms.length() - ".android.gms".length()) + ".android.c2dm";
+            for (String standard : C2DM_STANDARD_ACTIONS) {
+                c2dmRedirectMap.put(standard, vendorC2dmPrefix + standard.substring("com.google.android.c2dm".length()));
+            }
+            Log.i(TAG, "C2DM redirect prefix derived: " + vendorC2dmPrefix);
+        } else {
+            Log.i(TAG, "C2DM redirect disabled for targetGms: " + targetGms);
+        }
+    }
+
+    private static String redirectAction(String action) {
+        if (action == null) return null;
+        return c2dmRedirectMap.get(action);
+    }
+
     private static void hookIntentSetPackage() {
         try {
             XposedBridge.hookAllMethods(Intent.class, "setPackage", new XC_MethodHook() {
@@ -93,6 +147,52 @@ public class GmsRedirector {
             });
         } catch (Throwable t) {
             Log.e(TAG, "Failed to hook Intent.setPackage", t);
+        }
+    }
+
+
+    // Hook Intent.setAction to rewrite c2dm actions for microG-RE.
+    private static void hookIntentSetAction() {
+        try {
+            XposedBridge.hookAllMethods(Intent.class, "setAction", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    String action = (String) param.args[0];
+                    String redirected = redirectAction(action);
+                    if (redirected != null) {
+                        Log.d(TAG, "Redirecting c2dm action: " + action + " -> " + redirected);
+                        param.args[0] = redirected;
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to hook Intent.setAction", t);
+        }
+    }
+
+    // Hook Intent.getAction to reverse-map only the incoming FCM RECEIVE action.
+    // A vendor microG-RE (e.g. ReVanced GmsCore) delivers push messages with the
+    // vendor-namespaced action "<vendor>.android.c2dm.intent.RECEIVE", but the
+    // app's Firebase messaging code only recognizes the standard
+    // "com.google.android.c2dm.intent.RECEIVE". This is a read-side shim only:
+    // REGISTER/UNREGISTER/REGISTRATION are NOT reversed, so outgoing registration
+    // keeps the standard -> vendor redirect.
+
+    private static void hookIntentGetAction() {
+        try {
+            XposedBridge.hookAllMethods(Intent.class, "getAction", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    String action = (String) param.getResult();
+                    if (vendorC2dmPrefix != null && action != null && action.equals(vendorC2dmPrefix + ".intent.RECEIVE")) {
+                        String standard = "com.google.android.c2dm.intent.RECEIVE";
+                        Log.d(TAG, "Redirecting c2dm action (getAction): " + action + " -> " + standard);
+                        param.setResult(standard);
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to hook Intent.getAction", t);
         }
     }
 
@@ -133,6 +233,15 @@ public class GmsRedirector {
                         String redirected = redirectPackage(pkg);
                         if (redirected != null) {
                             intent.setPackage(redirected);
+                        }
+                    }
+                    // Rewrite c2dm actions passed via constructor
+                    String action = intent.getAction();
+                    if (action != null) {
+                        String redirectedAction = redirectAction(action);
+                        if (redirectedAction != null) {
+                            Log.d(TAG, "Redirecting c2dm action (constructor): " + action + " -> " + redirectedAction);
+                            intent.setAction(redirectedAction);
                         }
                     }
                 }
@@ -233,6 +342,17 @@ public class GmsRedirector {
                     "getPackageInfo",
                     String.class, int.class,
                     new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            // Redirect package name query: "com.google.android.gms" -> microG-RE
+                            String pkg = (String) param.args[0];
+                            String redirected = redirectPackage(pkg);
+                            if (redirected != null) {
+                                Log.d(TAG, "Redirecting getPackageInfo: " + pkg + " -> " + redirected);
+                                param.args[0] = redirected;
+                            }
+                        }
+
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             PackageInfo pi = (PackageInfo) param.getResult();

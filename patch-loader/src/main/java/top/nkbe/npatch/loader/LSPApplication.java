@@ -33,7 +33,6 @@ import top.nkbe.npatch.service.NeoLocalApplicationService;
 import top.nkbe.npatch.service.RemoteApplicationService;
 import top.nkbe.npatch.share.Constants;
 import top.nkbe.npatch.share.PatchConfig;
-import top.nkbe.npatch.util.SB;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -228,10 +227,6 @@ public class LSPApplication {
             XLog.e(TAG, "Error when creating context");
             return;
         }
-        if (SB.hasConflict(context)) {
-            SB.triggerConflict(context);
-            return;
-        }
 
         logInfo("Initialize service client");
         ILSPApplicationService service = null;
@@ -288,6 +283,7 @@ public class LSPApplication {
         }
 
         registerModuleCallerPrefixes(service);
+        SigBypass.registerModuleNativeLibraryRoots(context);
         SigBypass.doSigBypass(context, config.lspConfig.sigBypassLevel, config.hideLibs);
         disableProfile(context);
 
@@ -310,7 +306,8 @@ public class LSPApplication {
 
         if (config.useMicroG) {
             logInfo("Activating MicroG redirect via NPatch");
-            GmsRedirector.activate(context, config.originalSignature);
+            ClassLoader appCl = appLoadedApk != null ? appLoadedApk.getClassLoader() : null;
+            GmsRedirector.activate(context, config.originalSignature, config.microgVendor, appCl);
         }
 
         logInfo("NPatch bootstrap completed");

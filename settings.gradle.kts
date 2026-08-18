@@ -13,6 +13,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io")
     }
     versionCatalogs {
         create("libs") {
@@ -27,12 +28,10 @@ dependencyResolutionManagement {
 rootProject.name = "NPatch"
 include(
     ":apkzlib",
-    ":jar",
     ":manager",
     ":meta-loader",
     ":patch",
     ":patch-loader",
-    ":remote-api",
     ":share:android",
     ":share:java",
 )

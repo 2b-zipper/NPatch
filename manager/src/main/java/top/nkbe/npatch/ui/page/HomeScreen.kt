@@ -1,20 +1,17 @@
 package top.nkbe.npatch.ui.page
 
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,218 +19,759 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material.icons.rounded.Forum
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.RateReview
-import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.NewReleases
+import androidx.compose.material.icons.rounded.OpenInBrowser
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.datastore.preferences.core.emptyPreferences
+import androidx.core.net.toUri
+import io.github.suqi8.coui.kmp.basic.Button
+import io.github.suqi8.coui.kmp.basic.ButtonDefaults
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardDefaults
+import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.IconButton
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.SmallTopAppBar
+import io.github.suqi8.coui.kmp.basic.TextButton
+import io.github.suqi8.coui.kmp.overlay.OverlayDialog
+import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import nkbe.util.NeoPackageManager
 import nkbe.util.ShizukuApi
 import top.nkbe.npatch.R
-import top.nkbe.npatch.config.ThemeConfig
-import top.nkbe.npatch.config.dataStore
-import top.nkbe.npatch.share.LSPConfig
+import top.nkbe.npatch.config.Configs
+import top.nkbe.npatch.repo.KnotRelease
+import top.nkbe.npatch.repo.KnotReleaseLoader
 import top.nkbe.npatch.ui.component.NPatchScaffold
-import top.nkbe.npatch.ui.component.VectorStatusHeader
-import top.nkbe.npatch.ui.component.compat.Card
-import top.nkbe.npatch.ui.component.floatingGlassBottomBarContentPadding
-import top.nkbe.npatch.ui.util.LocalFloatingGlassBottomBar
+import top.nkbe.npatch.ui.util.KnotDownloader
+import top.nkbe.npatch.ui.util.LocalSnackbarHost
+import top.nkbe.npatch.ui.util.checkIsApkFixedByLSP
 
-private const val REPO_URL = "https://github.com/7723mod/NPatch"
-private const val TELEGRAM_URL = "https://t.me/NPatch"
-private const val OFFICIAL_WEBSITE_URL = "https://www.nkbe.top"
-private const val DISCUSSIONS_URL = "https://t.me/NPatch_HS"
-private const val CANARY_URL = "https://t.me/ONPatch"
+/** Knot のパッケージ名 */
+private const val KNOT_PACKAGE_NAME = "app.zipper.knot"
 
-@SuppressLint("ContextCastToActivity")
 @Composable
 fun HomeScreen(
     navigator: Navigator,
-    onManageShortcut: (Int) -> Unit = {},
-    onRepoShortcut: () -> Unit = {},
-    onSettingsShortcut: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
 ) {
+    val context = LocalContext.current
+    val lineApp = NeoPackageManager.appList.firstOrNull {
+        it.app.packageName == LINE_PACKAGE_NAME
+    }
+    val installedKnot = NeoPackageManager.appList.firstOrNull {
+        it.app.packageName == KNOT_PACKAGE_NAME
+    }
+    val installedKnotVersion = installedKnot?.versionName?.removePrefix("v")?.removePrefix("V")
+    val appsLoaded = NeoPackageManager.appList.isNotEmpty()
+    val shizukuReady = ShizukuApi.isReady
+    val scope = rememberCoroutineScope()
+    val snackbarHost = LocalSnackbarHost.current
+    val errorUnknown = stringResource(R.string.error_unknown)
     var isIntentLaunched by rememberSaveable { mutableStateOf(false) }
-    val activity = LocalContext.current as Activity
-    val launchIntent = activity.intent
-    var showAppearance by rememberSaveable { mutableStateOf(false) }
-    var showLanguage by rememberSaveable { mutableStateOf(false) }
-    val prefs by activity.dataStore.data.collectAsState(initial = emptyPreferences())
-    val ambience = prefs[ThemeConfig.HEADER_AMBIENCE] ?: "circuit"
-    val useFloatingGlassBottomBar = LocalFloatingGlassBottomBar.current
-    val bottomContentPadding = if (useFloatingGlassBottomBar) {
-        floatingGlassBottomBarContentPadding()
-    } else {
-        24.dp
+    var releases by remember { mutableStateOf<List<KnotRelease>>(emptyList()) }
+    var releasesLoading by remember { mutableStateOf(true) }
+    var refreshKey by remember { mutableStateOf(0) }
+    var showStorageWarning by remember { mutableStateOf(false) }
+    var showPatchChoiceDialog by remember { mutableStateOf(false) }
+
+    // KnotDownloader は stateless になったため HomeScreen レベルで remember する必要はないが、
+    // context を保持するため remember で同一インスタンスを使い回す
+    val downloader = remember { KnotDownloader(context) }
+
+    // 保存先フォルダ (URI) が未設定なら警告して設定画面へ誘導する
+    fun navigateToPatch(action: Int) {
+        if (Configs.storageDirectory == null) {
+            showStorageWarning = true
+        } else {
+            navigator.navigate(Route.NewPatch(action))
+        }
     }
 
-    LaunchedEffect(Unit) {
-        if (!isIntentLaunched && launchIntent.action == Intent.ACTION_VIEW &&
+    LaunchedEffect(refreshKey) {
+        val activity = context as? Activity
+        val launchIntent = activity?.intent
+        if (!isIntentLaunched &&
+            launchIntent?.action == Intent.ACTION_VIEW &&
             launchIntent.hasCategory(Intent.CATEGORY_DEFAULT) &&
             launchIntent.type == "application/vnd.android.package-archive"
         ) {
             isIntentLaunched = true
-            launchIntent.data?.let { navigator.navigate(Route.NewPatch(ACTION_INTENT_INSTALL, it.toString())) }
+            launchIntent.data?.let {
+                navigator.navigate(Route.NewPatch(ACTION_INTENT_INSTALL, it.toString()))
+            }
         }
         ShizukuApi.refreshState()
-        ShizukuApi.addRequestPermissionResultListener(shizukuListener)
-    }
-    DisposableEffect(Unit) {
-        onDispose { ShizukuApi.removeRequestPermissionResultListener(shizukuListener) }
-    }
 
-    val listState = rememberLazyListState()
-    var headerHeightPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
-    val collapse by remember {
-        derivedStateOf {
-            if (headerHeightPx == 0) 0f
-            else if (listState.firstVisibleItemIndex > 0) 1f
-            else (listState.firstVisibleItemScrollOffset / headerHeightPx.toFloat()).coerceIn(0f, 1f)
+        // Parallel: fetch app list and releases concurrently
+        coroutineScope {
+            val appJob = async {
+                if (NeoPackageManager.appList.isEmpty()) {
+                    NeoPackageManager.fetchAppList()
+                }
+            }
+            val releaseJob = async {
+                // キャッシュがあればスケルトンを出さず即表示し、バックグラウンドで更新する
+                if (KnotReleaseLoader.cachedReleases.isNotEmpty()) {
+                    releases = KnotReleaseLoader.cachedReleases
+                } else {
+                    releasesLoading = true
+                }
+                // 初期表示は TTL キャッシュを利用、リフレッシュボタン押下時のみ強制更新
+                KnotReleaseLoader.fetchAllReleases(forceRefresh = refreshKey > 0)
+                    .onSuccess { releases = it }
+                releasesLoading = false
+            }
+            appJob.await()
+            releaseJob.await()
         }
     }
 
-    NPatchScaffold(contentWindowInsets = WindowInsets(0)) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+    // Zero insets for this Scaffold: MainScreen's Box already pads by the status bar and
+    // consumes those insets via consumeWindowInsets, so the COUI SmallTopAppBar's
+    // unconditional top-inset padding sees zero remaining insets (single spacing).
+    NPatchScaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
+        ) {
+            SmallTopAppBar(
+                title = stringResource(R.string.screen_home),
+                color = COUITheme.colorScheme.surface,
+                actions = {
+                    IconButton(onClick = { refreshKey++ }) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    }
+                    IconButton(onClick = { onNavigateToSettings() }) {
+                        Icon(Icons.Rounded.Settings, contentDescription = null)
+                    }
+                },
+                // IMPORTANT: defaultWindowInsetsPadding must be false here.
+                // COUI's SmallTopAppBar always pads by the top systemBars inset (unconditional);
+                // MainScreen's Box consumes those insets via consumeWindowInsets, so this
+                // SmallTopAppBar sees zero remaining top insets. This flag only disables the
+                // horizontal insets (displayCutout + navigationBars), which would otherwise
+                // double the side padding.
+                defaultWindowInsetsPadding = false,
+            )
+
             LazyColumn(
-                state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = with(density) { headerHeightPx.toDp() } + 16.dp,
-                    bottom = bottomContentPadding,
-                ),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                item("take-part") {
-                    TakePartSection(onOpen = activity::openUrl)
-                    Spacer(Modifier.height(26.dp))
+                // ====== Centered app icon ======
+                item {
+                    // Spacing between the top app bar and the icon
+                    Spacer(Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            // clip(CircleShape) on the Box already clips ALL children inside it.
+                            // No need to clip the Image separately.
+                            .clip(CircleShape)
+                            .background(COUITheme.colorScheme.surfaceContainerHigh),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (lineApp != null) {
+                            // Cache icon lookup so it doesn't re-run on every recomposition.
+                            val iconBitmap = remember(lineApp.app.packageName) {
+                                NeoPackageManager.getIcon(lineApp)
+                            }
+                            Image(
+                                bitmap = iconBitmap,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                // The parent Box already clips to CircleShape;
+                                // fillMaxSize ensures the icon fills the circle.
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.ExitToApp,
+                                contentDescription = null,
+                                tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+                                modifier = Modifier.size(40.dp),
+                            )
+                        }
+                    }
                 }
-                item("about") {
-                    HomeAboutSection(
-                        onOpenAbout = { navigator.navigate(Route.About) },
-                        onOpenProject = { activity.openUrl(TELEGRAM_URL) },
+
+                // App name
+                item {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.line_app_name),
+                        style = COUITheme.textStyles.title1,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+
+                // Version + patch status
+                item {
+                    Spacer(Modifier.height(4.dp))
+                    if (!appsLoaded) {
+                        Box(
+                            modifier = Modifier
+                                .height(18.dp)
+                                .width(160.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(COUITheme.colorScheme.surfaceContainerHigh),
+                        )
+                    } else if (lineApp != null) {
+                        val isPatched = !checkIsApkFixedByLSP(context, LINE_PACKAGE_NAME)
+                        Text(
+                            text = stringResource(
+                                R.string.line_installed_version,
+                                lineApp.versionName ?: "?",
+                            ) + " \u00B7 " + stringResource(
+                                if (isPatched) R.string.line_patched else R.string.line_not_patched
+                            ),
+                            style = COUITheme.textStyles.body2,
+                            color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(R.string.line_not_installed),
+                            style = COUITheme.textStyles.body2,
+                            color = COUITheme.colorScheme.error,
+                        )
+                    }
+                }
+
+                // Patch button
+                item {
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { showPatchChoiceDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                            .height(48.dp),
+                        cornerRadius = 16.dp,
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.patch_start),
+                            style = COUITheme.textStyles.body1,
+                        )
+                    }
+                }
+
+                // Shizuku status
+                item {
+                    Spacer(Modifier.height(12.dp))
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                        colors = CardDefaults.defaultColors(
+                            color = COUITheme.colorScheme.surfaceContainerHigh,
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.shizuku),
+                                    style = COUITheme.textStyles.subtitle,
+                                )
+                                Text(
+                                    text = stringResource(
+                                        if (shizukuReady) R.string.shizuku_available
+                                        else R.string.shizuku_unavailable
+                                    ),
+                                    style = COUITheme.textStyles.body2,
+                                    color = if (shizukuReady) {
+                                        COUITheme.colorScheme.primary
+                                    } else {
+                                        COUITheme.colorScheme.onSurfaceVariantSummary
+                                    },
+                                )
+                            }
+                            if (!shizukuReady) {
+                                TextButton(
+                                    text = stringResource(R.string.shizuku_request),
+                                    onClick = { ShizukuApi.requestPermission() },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ====== Knot releases section ======
+                item {
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider(
+                        color = COUITheme.colorScheme.outline.copy(alpha = 0.5f),
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Rounded.NewReleases,
+                            contentDescription = null,
+                            tint = COUITheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.knot_releases_title),
+                            style = COUITheme.textStyles.subtitle,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = if (installedKnotVersion != null) {
+                                stringResource(R.string.knot_installed_version, installedKnotVersion)
+                            } else {
+                                stringResource(R.string.knot_not_installed)
+                            },
+                            style = COUITheme.textStyles.footnote2,
+                            color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
+
+                if (releasesLoading && releases.isEmpty()) {
+                    items(3) {
+                        SkeletonReleaseItem()
+                        if (it < 2) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 20.dp),
+                                color = COUITheme.colorScheme.outline.copy(alpha = 0.3f),
+                                thickness = 0.5.dp,
+                            )
+                        }
+                    }
+                } else if (releases.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(60.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.knot_releases_empty),
+                                style = COUITheme.textStyles.body2,
+                                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
+                } else {
+                    itemsIndexed(
+                        items = releases,
+                        key = { _, r -> r.tagName ?: r.hashCode().toString() }
+                    ) { index, release ->
+                        KnotReleaseItem(
+                            release = release,
+                            isLatest = index == 0,
+                            installedVersion = installedKnotVersion,
+                            context = context,
+                            downloader = downloader,
+                            onContinueToPatch = { showPatchChoiceDialog = true },
+                        )
+                        if (index < releases.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 20.dp),
+                                color = COUITheme.colorScheme.outline.copy(alpha = 0.3f),
+                                thickness = 0.5.dp,
+                            )
+                        }
+                    }
+                }
+
+                item { Spacer(Modifier.height(24.dp)) }
+            }
+        }
+    }
+
+    // パッチ方法選択ダイアログ
+    if (showPatchChoiceDialog) {
+        PatchChoiceDialog(
+            showInstalledOption = lineApp != null,
+            onPatchInstalled = {
+                showPatchChoiceDialog = false
+                navigateToPatch(ACTION_APPLIST)
+            },
+            onPatchFromApk = {
+                showPatchChoiceDialog = false
+                navigateToPatch(ACTION_STORAGE)
+            },
+            onDownload = {
+                showPatchChoiceDialog = false
+                val downloadIntent = Intent(Intent.ACTION_VIEW, LINE_DOWNLOAD_URL.toUri())
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { context.startActivity(downloadIntent) }
+                    .onFailure {
+                        scope.launch { snackbarHost.showSnackbar(it.message ?: errorUnknown) }
+                    }
+            },
+            onDismiss = { showPatchChoiceDialog = false },
+        )
+    }
+
+    // 保存先フォルダ (URI) 未設定の警告ダイアログ
+    if (showStorageWarning) {
+        OverlayDialog(
+            title = stringResource(R.string.storage_not_set_title),
+            show = showStorageWarning,
+            onDismissRequest = { showStorageWarning = false },
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp),
+            ) {
+                Text(stringResource(R.string.storage_not_set_message))
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(
+                        text = stringResource(android.R.string.cancel),
+                        modifier = Modifier.weight(1f),
+                        onClick = { showStorageWarning = false },
+                    )
+                    TextButton(
+                        text = stringResource(R.string.go_to_settings),
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            showStorageWarning = false
+                            onNavigateToSettings()
+                        },
+                        colors = ButtonDefaults.textButtonColors(),
                     )
                 }
             }
+        }
+    }
+}
 
-            val available = ShizukuApi.isPermissionGranted
-            VectorStatusHeader(
-                active = available,
-                status = stringResource(if (available) R.string.status_active else R.string.status_inactive),
-                version = "${LSPConfig.instance.VERSION_NAME} (${LSPConfig.instance.VERSION_CODE})",
-                apiVersion = LSPConfig.instance.API_CODE,
-                onStatusClick = {
-                    if (ShizukuApi.isBinderAvailable && !available) ShizukuApi.requestPermission()
-                },
-                onAppearanceClick = { showAppearance = true },
-                onLanguageClick = { showLanguage = true },
-                ambience = ambience,
-                modifier = Modifier.onSizeChanged { headerHeightPx = it.height }.graphicsLayer {
-                    alpha = 1f - collapse
-                    translationY = -collapse * headerHeightPx * 0.5f
-                },
+@Composable
+private fun PatchChoiceDialog(
+    showInstalledOption: Boolean,
+    onPatchInstalled: () -> Unit,
+    onPatchFromApk: () -> Unit,
+    onDownload: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val show = remember { mutableStateOf(true) }
+    OverlayDialog(
+        title = stringResource(R.string.patch_choice_title),
+        show = show.value,
+        onDismissRequest = { show.value = false; onDismiss() },
+    ) {
+        Column {
+            if (showInstalledOption) {
+                PatchChoiceItem(
+                    icon = Icons.Rounded.Smartphone,
+                    text = stringResource(R.string.patch_installed_line),
+                    onClick = { show.value = false; onPatchInstalled() },
+                )
+            }
+            PatchChoiceItem(
+                icon = Icons.Rounded.FolderOpen,
+                text = stringResource(R.string.patch_from_apk),
+                onClick = { show.value = false; onPatchFromApk() },
+            )
+            PatchChoiceItem(
+                icon = Icons.Rounded.Download,
+                text = stringResource(R.string.download_line),
+                onClick = { show.value = false; onDownload() },
             )
         }
     }
-
-    if (showAppearance) HomeAppearanceSheet { showAppearance = false }
-    if (showLanguage) HomeLanguageSheet { showLanguage = false }
-}
-
-private val shizukuListener: (Int, Int) -> Unit = { _, grantResult ->
-    ShizukuApi.isPermissionGranted = grantResult == PackageManager.PERMISSION_GRANTED
-    ShizukuApi.refreshState()
 }
 
 @Composable
-private fun TakePartSection(onOpen: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.home_contribute), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ProjectDoor(Icons.Rounded.RateReview, stringResource(R.string.home_review_change), Modifier.weight(1f).fillMaxHeight()) { onOpen(OFFICIAL_WEBSITE_URL) }
-            ProjectDoor(Icons.Rounded.Forum, stringResource(R.string.home_discussions), Modifier.weight(1f).fillMaxHeight()) { onOpen(DISCUSSIONS_URL) }
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ProjectDoor(Icons.Rounded.Science, stringResource(R.string.home_test_canary), Modifier.weight(1f).fillMaxHeight()) { onOpen(CANARY_URL) }
-            ProjectDoor(Icons.Rounded.BugReport, stringResource(R.string.home_report_problem), Modifier.weight(1f).fillMaxHeight()) { onOpen("$REPO_URL/issues/new/choose") }
-        }
+private fun PatchChoiceItem(
+    icon: ImageVector,
+    text: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = COUITheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp),
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = text,
+            style = COUITheme.textStyles.body1,
+        )
     }
 }
 
 @Composable
-private fun ProjectDoor(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    modifier: Modifier,
-    onClick: () -> Unit,
-) {
-    Card(onClick = onClick, modifier = modifier) {
-        Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {
-            Row(Modifier.fillMaxHeight().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Text(label, style = MaterialTheme.typography.labelLarge)
+private fun SkeletonReleaseItem() {
+    val shimmer = COUITheme.colorScheme.surfaceContainerHigh
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(shimmer),
+        )
+        Column(Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .height(12.dp)
+                        .width(40.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(shimmer),
+                )
+                Box(
+                    modifier = Modifier
+                        .height(12.dp)
+                        .width(60.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(shimmer),
+                )
+                Spacer(Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .height(12.dp)
+                        .width(72.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(shimmer),
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .height(10.dp)
+                    .fillMaxWidth(0.75f)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmer),
+            )
+            Spacer(Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .height(10.dp)
+                    .fillMaxWidth(0.5f)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(shimmer),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .height(28.dp)
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(shimmer),
+                )
+                Box(
+                    modifier = Modifier
+                        .height(28.dp)
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(shimmer),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun HomeAboutSection(onOpenAbout: () -> Unit, onOpenProject: () -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.home_about), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(10.dp))
-        Text(stringResource(R.string.home_description), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(16.dp))
-        InfoRow(stringResource(R.string.home_api_version), LSPConfig.instance.API_CODE.toString())
-        InfoRow(stringResource(R.string.home_npatch_version), "${LSPConfig.instance.VERSION_NAME} (${LSPConfig.instance.VERSION_CODE})")
-        InfoRow(stringResource(R.string.home_framework_version), "${LSPConfig.instance.CORE_VERSION_NAME} (${LSPConfig.instance.CORE_VERSION_CODE})")
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ProjectDoor(Icons.Rounded.Info, stringResource(R.string.home_about), Modifier.weight(1f).fillMaxHeight()) { onOpenAbout() }
-            ProjectDoor(Icons.AutoMirrored.Rounded.Send, "Telegram", Modifier.weight(1f).fillMaxHeight()) { onOpenProject() }
+private fun KnotReleaseItem(
+    release: KnotRelease,
+    isLatest: Boolean,
+    installedVersion: String?,
+    context: android.content.Context,
+    downloader: KnotDownloader,
+    onContinueToPatch: () -> Unit,
+) {
+    val version = release.version ?: release.tagName ?: return
+    val apkAsset = release.assets.firstOrNull { it.name?.endsWith(".apk") == true }
+    var isDownloading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.knot_release_version, version),
+                style = COUITheme.textStyles.footnote1,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                color = COUITheme.colorScheme.primary,
+            )
+            if (isLatest) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "\u2022 ${stringResource(R.string.knot_release_latest)}",
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.primary,
+                )
+            }
+            if (installedVersion != null && release.version == installedVersion) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.knot_installed),
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            release.publishedAt?.let { date ->
+                Text(
+                    text = date.take(10),
+                    style = COUITheme.textStyles.footnote2,
+                    color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+        }
+
+        release.body?.let { body ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = body.lines()
+                    .filter { it.isNotBlank() }
+                    .take(3)
+                    .joinToString("\n") { it.trimStart('*', '\r', ' ') },
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = {
+                    val downloadUrl = apkAsset?.browserDownloadUrl
+                    if (downloadUrl != null) {
+                        val fileName = apkAsset.name ?: "Knot-v$version.apk"
+                        isDownloading = true
+                        scope.launch {
+                            try {
+                                // suspend するので完了まで isDownloading が true のまま維持される
+                                // -> コルーチン内の withContext(Main) から startActivity を呼ぶため
+                                //    Android 10+ の背景起動制限にもかからない
+                                val installed = downloader.downloadAndOpen(downloadUrl, fileName)
+                                if (installed) {
+                                    // ダウンロード・インストール完了後にパッチ続行へ進む
+                                    onContinueToPatch()
+                                }
+                            } finally {
+                                isDownloading = false
+                            }
+                        }
+                    } else {
+                        // APK asset がない場合はブラウザでリリースページへ
+                        release.htmlUrl?.let { url ->
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
+                    }
+                },
+                enabled = !isDownloading,
+                modifier = Modifier.weight(1f),
+                cornerRadius = 12.dp,
+            ) {
+                if (isDownloading) {
+                    CircularProgressIndicator(
+                        size = 16.dp,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.knot_release_download),
+                    style = COUITheme.textStyles.footnote1,
+                )
+            }
+            Button(
+                onClick = {
+                    release.htmlUrl?.let { url ->
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                },
+                modifier = Modifier.weight(1f),
+                cornerRadius = 12.dp,
+                colors = ButtonDefaults.buttonColors(
+                    color = Color.Transparent,
+                    contentColor = COUITheme.colorScheme.primary,
+                ),
+            ) {
+                Icon(Icons.Rounded.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.knot_release_changelog),
+                    style = COUITheme.textStyles.footnote1,
+                )
+            }
         }
     }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-    }
-}
-
-private fun Activity.openUrl(url: String) {
-    runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 }
