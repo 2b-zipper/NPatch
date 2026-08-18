@@ -53,9 +53,9 @@ android {
             System.getenv("NPATCH_MANAGER_SIGNATURE_SHA256")
                 ?: project.findProperty("npatchManagerSignatureSha256")?.toString()
                 ?: listOf(
-                    "DB73788534AFFC4BFA3AE16040A2D3A2",
-                    "C2B63EDEA1E07F3A1CF9AFF4DD0995A8",
-                ).joinToString("")
+                    "DB73788534AFFC4BFA3AE16040A2D3A2C2B63EDEA1E07F3A1CF9AFF4DD0995A8",
+                    "A1F6D52645F53DB0995EDB6DD1C61071B0CA66C281C68ED20B0DEC7268E14A2C",
+                ).joinToString(",")
             )
             .split(',', ';', ' ', '\n', '\r', '\t')
             .map { it.trim().uppercase(Locale.ROOT) }
