@@ -22,6 +22,10 @@ import de.robv.android.xposed.XposedHelpers;
 public class GmsRedirector {
     private static final String TAG = "NPatch-GmsRedirect";
     private static final String REAL_GMS = Constants.REAL_GMS_PACKAGE_NAME;
+    private static final String CHOOSE_ACCOUNT_ACTION =
+            "com.google.android.gms.common.account.CHOOSE_ACCOUNT";
+    private static final ComponentName SYSTEM_ACCOUNT_PICKER = ComponentName.unflattenFromString(
+            "android/.accounts.ChooseTypeAndAccountActivity");
 
     // 鎖定社群主流的 MicroG 套件名稱
     private static final String[] MICROG_PACKAGES = {
@@ -132,6 +136,7 @@ public class GmsRedirector {
 
     private static String redirectAction(String action) {
         if (action == null) return null;
+        if (isChooseAccountAction(action)) return null;
         String redirected = c2dmRedirectMap.get(action);
         if (redirected != null) return redirected;
         if (targetGms != null && !REAL_GMS.equals(targetGms) && targetGms.endsWith(".android.gms")) {
@@ -145,11 +150,34 @@ public class GmsRedirector {
         return null;
     }
 
+    private static boolean isChooseAccountAction(String action) {
+        return CHOOSE_ACCOUNT_ACTION.equals(action)
+                || (targetGms != null
+                && (targetGms + ".common.account.CHOOSE_ACCOUNT").equals(action));
+    }
+
+    private static void routeChooseAccountToSystem(Intent intent) {
+        if (intent == null || SYSTEM_ACCOUNT_PICKER == null
+                || !isChooseAccountAction(intent.getAction())) {
+            return;
+        }
+        if (!SYSTEM_ACCOUNT_PICKER.equals(intent.getComponent()) || intent.getPackage() != null) {
+            Log.d(TAG, "Routing CHOOSE_ACCOUNT directly to the system account picker");
+            intent.setComponent(SYSTEM_ACCOUNT_PICKER);
+            intent.setPackage(null);
+        }
+    }
+
     private static void hookIntentSetPackage() {
         try {
             XposedBridge.hookAllMethods(Intent.class, "setPackage", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
+                    Intent intent = (Intent) param.thisObject;
+                    if (isChooseAccountAction(intent.getAction())) {
+                        param.args[0] = null;
+                        return;
+                    }
                     String pkg = (String) param.args[0];
                     String redirected = redirectPackage(pkg);
                     if (redirected != null) param.args[0] = redirected;
@@ -173,6 +201,11 @@ public class GmsRedirector {
                         Log.d(TAG, "Redirecting c2dm action: " + action + " -> " + redirected);
                         param.args[0] = redirected;
                     }
+                }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    routeChooseAccountToSystem((Intent) param.thisObject);
                 }
             });
         } catch (Throwable t) {
@@ -219,6 +252,11 @@ public class GmsRedirector {
                         }
                     }
                 }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    routeChooseAccountToSystem((Intent) param.thisObject);
+                }
             });
         } catch (Throwable t) {
             Log.e(TAG, "Failed to hook Intent.setComponent", t);
@@ -254,6 +292,7 @@ public class GmsRedirector {
                             intent.setAction(redirectedAction);
                         }
                     }
+                    routeChooseAccountToSystem(intent);
                 }
             });
         } catch (Throwable t) {
