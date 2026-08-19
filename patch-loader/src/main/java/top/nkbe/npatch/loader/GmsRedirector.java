@@ -132,7 +132,17 @@ public class GmsRedirector {
 
     private static String redirectAction(String action) {
         if (action == null) return null;
-        return c2dmRedirectMap.get(action);
+        String redirected = c2dmRedirectMap.get(action);
+        if (redirected != null) return redirected;
+        if (targetGms != null && !REAL_GMS.equals(targetGms) && targetGms.endsWith(".android.gms")) {
+            String prefix = "com.google.android.gms.";
+            if (action.startsWith(prefix)) {
+                String vendorAction = targetGms + action.substring(prefix.length() - 1);
+                Log.d(TAG, "Redirecting GMS action: " + action + " -> " + vendorAction);
+                return vendorAction;
+            }
+        }
+        return null;
     }
 
     private static void hookIntentSetPackage() {
