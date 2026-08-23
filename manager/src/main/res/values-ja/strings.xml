@@ -132,4 +132,18 @@
     <string name="storage_not_set_title">保存先フォルダが未設定です</string>
     <string name="storage_not_set_message">保存先フォルダ (URI) が設定されていません。パッチ前に設定してください。</string>
     <string name="go_to_settings">設定画面へ</string>
+    <string name="patch_from_cdn">CDNからダウンロードしてパッチ</string>
+    <string name="settings_custom_line_version">バージョンコードを指定</string>
+    <string name="settings_custom_line_version_summary">CDNから特定バージョンのLINEをダウンロードします</string>
+    <string name="settings_custom_line_version_summary_active">指定中のバージョンコード: %1$s</string>
+    <string name="settings_custom_line_version_code">バージョンコード</string>
+    <string name="settings_custom_line_version_not_set">未設定 (タップして入力)</string>
+    <string name="settings_custom_line_version_dialog_title">LINE バージョンコードの設定</string>
+    <string name="settings_custom_line_version_dialog_desc">CDNからダウンロードするLINEの対象バージョンコードを入力してください。</string>
+    <string name="settings_include_prerelease">プレリリース版を含める</string>
+    <string name="settings_include_prerelease_summary">リリース一覧にプレリリース版を含め、CDNからのLINEダウンロードにプレリリースチャンネルを使用します</string>
+    <string name="select_line_version_title">LINE バージョンの選択</string>
+    <string name="select_line_version_loading">バージョン情報を取得中…</string>
+    <string name="select_line_version_recommended">推奨</string>
+    <string name="select_line_version_empty">バージョンが見つかりません</string>
 </resources>

@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.NewReleases
@@ -72,12 +73,17 @@ import nkbe.util.NeoPackageManager
 import nkbe.util.ShizukuApi
 import top.nkbe.npatch.R
 import top.nkbe.npatch.config.Configs
+import top.nkbe.npatch.network.cdn.ApkCdnService
+import top.nkbe.npatch.network.cdn.VersionListResult
 import top.nkbe.npatch.repo.KnotRelease
 import top.nkbe.npatch.repo.KnotReleaseLoader
 import top.nkbe.npatch.ui.component.NPatchScaffold
 import top.nkbe.npatch.ui.util.KnotDownloader
 import top.nkbe.npatch.ui.util.LocalSnackbarHost
 import top.nkbe.npatch.ui.util.checkIsApkFixedByLSP
+import top.nkbe.npatch.ui.util.rememberDisplayedReleases
+import top.nkbe.npatch.util.LINE_PACKAGE_NAME
+import top.nkbe.npatch.util.formatLineVersionName
 
 /** Knot のパッケージ名 */
 private const val KNOT_PACKAGE_NAME = "app.zipper.knot"
@@ -103,20 +109,22 @@ fun HomeScreen(
     var isIntentLaunched by rememberSaveable { mutableStateOf(false) }
     var releases by remember { mutableStateOf<List<KnotRelease>>(emptyList()) }
     var releasesLoading by remember { mutableStateOf(true) }
+    val displayedReleases = rememberDisplayedReleases(releases)
     var refreshKey by remember { mutableStateOf(0) }
     var showStorageWarning by remember { mutableStateOf(false) }
     var showPatchChoiceDialog by remember { mutableStateOf(false) }
+    var showCdnVersionDialog by remember { mutableStateOf(false) }
 
     // KnotDownloader は stateless になったため HomeScreen レベルで remember する必要はないが、
     // context を保持するため remember で同一インスタンスを使い回す
     val downloader = remember { KnotDownloader(context) }
 
     // 保存先フォルダ (URI) が未設定なら警告して設定画面へ誘導する
-    fun navigateToPatch(action: Int) {
+    fun navigateToPatch(action: Int, data: String? = null) {
         if (Configs.storageDirectory == null) {
             showStorageWarning = true
         } else {
-            navigator.navigate(Route.NewPatch(action))
+            navigator.navigate(Route.NewPatch(action, data))
         }
     }
 
@@ -374,7 +382,7 @@ fun HomeScreen(
                     }
                 }
 
-                if (releasesLoading && releases.isEmpty()) {
+                if (releasesLoading && displayedReleases.isEmpty()) {
                     items(3) {
                         SkeletonReleaseItem()
                         if (it < 2) {
@@ -385,7 +393,7 @@ fun HomeScreen(
                             )
                         }
                     }
-                } else if (releases.isEmpty()) {
+                } else if (displayedReleases.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -402,7 +410,7 @@ fun HomeScreen(
                     }
                 } else {
                     itemsIndexed(
-                        items = releases,
+                        items = displayedReleases,
                         key = { _, r -> r.tagName ?: r.hashCode().toString() }
                     ) { index, release ->
                         KnotReleaseItem(
@@ -413,7 +421,7 @@ fun HomeScreen(
                             downloader = downloader,
                             onContinueToPatch = { showPatchChoiceDialog = true },
                         )
-                        if (index < releases.lastIndex) {
+                        if (index < displayedReleases.lastIndex) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(horizontal = 20.dp),
                                 color = COUITheme.colorScheme.outline.copy(alpha = 0.3f),
@@ -428,10 +436,29 @@ fun HomeScreen(
         }
     }
 
+    // CDN バージョン選択ダイアログ
+    if (showCdnVersionDialog) {
+        CdnVersionSelectionDialog(
+            onSelectVersion = { selectedVer ->
+                showCdnVersionDialog = false
+                navigateToPatch(ACTION_CDN_DOWNLOAD, selectedVer?.toString())
+            },
+            onDismiss = { showCdnVersionDialog = false }
+        )
+    }
     // パッチ方法選択ダイアログ
     if (showPatchChoiceDialog) {
         PatchChoiceDialog(
             showInstalledOption = lineApp != null,
+            onPatchFromCdn = {
+                showPatchChoiceDialog = false
+                val customVersion = Configs.customLineVersionCodeOrNull
+                if (customVersion != null) {
+                    navigateToPatch(ACTION_CDN_DOWNLOAD, customVersion.toString())
+                } else {
+                    showCdnVersionDialog = true
+                }
+            },
             onPatchInstalled = {
                 showPatchChoiceDialog = false
                 navigateToPatch(ACTION_APPLIST)
@@ -492,6 +519,7 @@ fun HomeScreen(
 @Composable
 private fun PatchChoiceDialog(
     showInstalledOption: Boolean,
+    onPatchFromCdn: () -> Unit,
     onPatchInstalled: () -> Unit,
     onPatchFromApk: () -> Unit,
     onDownload: () -> Unit,
@@ -504,6 +532,11 @@ private fun PatchChoiceDialog(
         onDismissRequest = { show.value = false; onDismiss() },
     ) {
         Column {
+            PatchChoiceItem(
+                icon = Icons.Rounded.CloudDownload,
+                text = stringResource(R.string.patch_from_cdn),
+                onClick = { show.value = false; onPatchFromCdn() },
+            )
             if (showInstalledOption) {
                 PatchChoiceItem(
                     icon = Icons.Rounded.Smartphone,
@@ -771,6 +804,72 @@ private fun KnotReleaseItem(
                     text = stringResource(R.string.knot_release_changelog),
                     style = COUITheme.textStyles.footnote1,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogMessageRow(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = text,
+            style = COUITheme.textStyles.body2,
+            color = COUITheme.colorScheme.onSurfaceVariantSummary
+        )
+    }
+}
+
+@Composable
+private fun CdnVersionSelectionDialog(
+    onSelectVersion: (Long?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var isLoading by remember { mutableStateOf(true) }
+    var result by remember { mutableStateOf<VersionListResult?>(null) }
+
+    LaunchedEffect(Unit) {
+        result = ApkCdnService(context).fetchAvailableVersions()
+        isLoading = false
+    }
+
+    val show = remember { mutableStateOf(true) }
+    OverlayDialog(
+        title = stringResource(R.string.select_line_version_title),
+        show = show.value,
+        onDismissRequest = { show.value = false; onDismiss() },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+        ) {
+            val versions = result?.versions.orEmpty()
+            when {
+                isLoading -> DialogMessageRow(stringResource(R.string.select_line_version_loading))
+                versions.isEmpty() -> DialogMessageRow(stringResource(R.string.select_line_version_empty))
+                else -> {
+                    val recommended = result?.recommended
+                    val recommendedSuffix = stringResource(R.string.select_line_version_recommended)
+                    versions.forEach { ver ->
+                        val formattedVer = formatLineVersionName(ver)
+                        PatchChoiceItem(
+                            icon = Icons.Rounded.CloudDownload,
+                            text = if (ver == recommended) "$formattedVer ($recommendedSuffix)" else formattedVer,
+                            onClick = {
+                                show.value = false
+                                onSelectVersion(ver)
+                            }
+                        )
+                    }
+                }
             }
         }
     }

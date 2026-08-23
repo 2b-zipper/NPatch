@@ -1,11 +1,13 @@
 package top.nkbe.npatch.ui.viewmodel
 
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
@@ -17,17 +19,21 @@ import top.nkbe.npatch.Patcher
 import top.nkbe.npatch.config.ConfigManager
 import top.nkbe.npatch.database.entity.Module
 import top.nkbe.npatch.lspApp
+import top.nkbe.npatch.network.cdn.ApkCdnService
 import top.nkbe.npatch.patch.util.Logger
 import top.nkbe.npatch.share.Constants
 import top.nkbe.npatch.share.PatchConfig
+import top.nkbe.npatch.util.LINE_PACKAGE_NAME
+import top.nkbe.npatch.util.formatLineVersionName
+import java.io.File
 
 class NewPatchViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "NewPatchViewModel"
-
-        /** パッチ成功時に自動でスコープ登録するモジュール（Knot） */
         private const val KNOT_PACKAGE_NAME = "app.zipper.knot"
+
+        private const val CDN_CACHE_DIR = "cdn_line_apks"
     }
 
     enum class PatchState {
@@ -41,11 +47,17 @@ class NewPatchViewModel : ViewModel() {
     sealed class ViewAction {
         object DoneInit : ViewAction()
         data class ConfigurePatch(val app: AppInfo) : ViewAction()
+        data class ConfigureCdnLinePatch(val targetVersionCode: Long? = null) : ViewAction()
         object SubmitPatch : ViewAction()
         object LaunchPatch : ViewAction()
     }
 
+    data class CdnRequest(val targetVersionCode: Long?)
+
     var patchState by mutableStateOf(PatchState.INIT)
+        private set
+
+    var cdnRequest by mutableStateOf<CdnRequest?>(null)
         private set
 
     // Patch Configuration
@@ -69,8 +81,18 @@ class NewPatchViewModel : ViewModel() {
         private set
     lateinit var patchOptions: Patcher.Options
         private set
+    private lateinit var patchConfig: PatchConfig
 
     val logs = mutableStateListOf<Pair<Int, String>>()
+
+    private fun updateLastLog(msg: String) {
+        if (logs.isNotEmpty()) {
+            logs[logs.lastIndex] = Log.INFO to msg
+        } else {
+            logs += Log.INFO to msg
+        }
+    }
+
     private val logger = object : Logger() {
         override fun d(msg: String) {
             if (verbose) {
@@ -95,6 +117,7 @@ class NewPatchViewModel : ViewModel() {
             when (action) {
                 is ViewAction.DoneInit -> doneInit()
                 is ViewAction.ConfigurePatch -> configurePatch(action.app)
+                is ViewAction.ConfigureCdnLinePatch -> configureCdnLinePatch(action.targetVersionCode)
                 is ViewAction.SubmitPatch -> submitPatch()
                 is ViewAction.LaunchPatch -> launchPatch()
             }
@@ -103,6 +126,7 @@ class NewPatchViewModel : ViewModel() {
 
     fun reset() {
         patchState = PatchState.INIT
+        cdnRequest = null
         useManager = true
         newPackageName = ""
         debuggable = false
@@ -132,13 +156,33 @@ class NewPatchViewModel : ViewModel() {
 
     private fun configurePatch(app: AppInfo) {
         Log.d(TAG, "Configuring patch for ${app.app.packageName}")
+        cdnRequest = null
         patchApp = app
         patchState = PatchState.CONFIGURING
         newPackageName = app.app.packageName
     }
 
+    private fun configureCdnLinePatch(targetVer: Long? = null) {
+        Log.d(TAG, "Configuring CDN Line Patch (targetVer=$targetVer)")
+        cdnRequest = CdnRequest(targetVer)
+        useManager = true
+        embeddedModules = emptyList()
+        val placeholderAppInfo = ApplicationInfo().apply {
+            packageName = LINE_PACKAGE_NAME
+            sourceDir = ""
+        }
+        patchApp = AppInfo(
+            app = placeholderAppInfo,
+            label = "LINE",
+            versionName = targetVer?.let(::formatLineVersionName) ?: "Cloud CDN",
+            versionCode = targetVer ?: 0L
+        )
+        newPackageName = LINE_PACKAGE_NAME
+        patchState = PatchState.CONFIGURING
+    }
+
     private fun submitPatch() {
-        Log.d(TAG, "Submit Patch")
+        Log.d(TAG, "Submit Patch (cdn=${cdnRequest != null})")
         if (useManager) embeddedModules = emptyList()
         val patchSigBypassLevel = if (useManager) sigBypassLevel else sigBypassLevel.coerceAtMost(Constants.SIGBYPASS_HIGH)
         val patchHideLibs =
@@ -148,7 +192,7 @@ class NewPatchViewModel : ViewModel() {
         sigBypassLevel = patchSigBypassLevel
         hideLibs = patchHideLibs
         overrideVersionCodeValue = patchVersionCode.toString()
-        val config = PatchConfig(
+        patchConfig = PatchConfig(
             useManager,
             debuggable,
             overrideVersionCode,
@@ -163,21 +207,37 @@ class NewPatchViewModel : ViewModel() {
             patchHideLibs,
             microgVendor,
         )
-        patchOptions = Patcher.Options(
-            newPackageName = newPackageName,
-            config = config,
-            apkPaths = listOf(patchApp.app.sourceDir) + (patchApp.app.splitSourceDirs ?: emptyArray()),
-            embeddedModules = embeddedModules.flatMap { listOf(it.app.sourceDir) + (it.app.splitSourceDirs ?: emptyArray()) }
+        patchOptions = buildPatchOptions(
+            apkPaths = if (cdnRequest != null) {
+                emptyList()
+            } else {
+                listOf(patchApp.app.sourceDir) + (patchApp.app.splitSourceDirs ?: emptyArray())
+            }
         )
         patchState = PatchState.PATCHING
     }
 
+    private fun buildPatchOptions(apkPaths: List<String>) = Patcher.Options(
+        newPackageName = newPackageName,
+        config = patchConfig,
+        apkPaths = apkPaths,
+        embeddedModules = embeddedModules.flatMap {
+            listOf(it.app.sourceDir) + (it.app.splitSourceDirs ?: emptyArray())
+        }
+    )
+
     private suspend fun launchPatch() {
         logger.i("Launch Patch")
         patchState = try {
-            Patcher.patch(logger, patchOptions)
-            // このマネージャにはモジュール管理画面が無いため、
-            // パッチ成功時に Knot モジュールを自動でスコープ登録する
+            val options = cdnRequest
+                ?.let { buildPatchOptions(apkPaths = downloadCdnApks(it)) }
+                ?: patchOptions
+
+            logger.i("[Patch] Starting LSPatch engine...")
+            Patcher.patch(logger, options)
+            logger.i("[Patch] Patching completed successfully!")
+
+            // 自動で Knot モジュールをスコープ登録
             runCatching { autoScopeKnot() }
                 .onFailure { logger.e("Auto-scope Knot failed: ${it.message}") }
             PatchState.FINISHED
@@ -188,6 +248,18 @@ class NewPatchViewModel : ViewModel() {
         } finally {
             NeoPackageManager.cleanTmpApkDir()
         }
+    }
+
+    private suspend fun downloadCdnApks(request: CdnRequest): List<String> {
+        val downloadedFiles = ApkCdnService(lspApp).downloadLineApksForPatcher(
+            logger = logger,
+            outputDir = File(lspApp.cacheDir, CDN_CACHE_DIR),
+            targetVersionCode = request.targetVersionCode,
+            onProgressUpdate = ::updateLastLog,
+        )
+        NeoPackageManager.getAppInfoFromApks(downloadedFiles.map { it.toUri() })
+            .onSuccess { appList -> appList.firstOrNull()?.let { patchApp = it } }
+        return downloadedFiles.map { it.absolutePath }
     }
 
     private suspend fun autoScopeKnot() {

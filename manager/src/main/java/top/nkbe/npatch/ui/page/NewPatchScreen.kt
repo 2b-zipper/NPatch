@@ -4,21 +4,9 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +16,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
+import io.github.suqi8.coui.kmp.basic.CircularProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
@@ -41,6 +30,7 @@ import top.nkbe.npatch.ui.page.newpatch.ConfiguringTopBar
 import top.nkbe.npatch.ui.page.newpatch.DoPatchBody
 import top.nkbe.npatch.ui.page.newpatch.PatchOptionsBody
 import top.nkbe.npatch.ui.util.LocalSnackbarHost
+import top.nkbe.npatch.util.LINE_PACKAGE_NAME
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.PatchState
 import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.ViewAction
@@ -48,13 +38,13 @@ import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.ViewAction
 const val ACTION_STORAGE = 0
 const val ACTION_APPLIST = 1
 const val ACTION_INTENT_INSTALL = 2
+const val ACTION_CDN_DOWNLOAD = 3
 
-const val LINE_PACKAGE_NAME = "jp.naver.line.android"
 const val LINE_DOWNLOAD_URL = "https://www.apkmirror.com/uploads/?appcategory=line"
 
 /**
  * パッチ実行画面。
- * ストレージからの APK 選択、インストール済みアプリの直接パッチ、インテント経由の APK を扱う。
+ * ストレージからの APK 選択、インストール済みアプリの直接パッチ、インテント経由の APK、CDN 自動ダウンロードパッチを扱う。
  */
 @Composable
 fun NewPatchScreen(
@@ -135,16 +125,17 @@ fun NewPatchScreen(
                 }
                 viewModel.dispatch(ViewAction.DoneInit)
             }
+            ACTION_CDN_DOWNLOAD -> {
+                val targetVer = data?.toLongOrNull()
+                viewModel.dispatch(ViewAction.ConfigureCdnLinePatch(targetVer))
+            }
         }
     }
 
-    // 戻るキーでパッチ中以外は中断して戻る
-    BackHandler(enabled = true) {
-        if (viewModel.patchState != PatchState.PATCHING) {
-            scope.launch { NeoPackageManager.cleanTmpApkDir() }
-            viewModel.reset()
-            navigator.pop()
-        }
+    BackHandler(enabled = viewModel.patchState != PatchState.PATCHING && viewModel.patchState != PatchState.INIT) {
+        scope.launch { NeoPackageManager.cleanTmpApkDir() }
+        viewModel.reset()
+        navigator.pop()
     }
 
     NPatchScaffold(
@@ -182,7 +173,11 @@ fun NewPatchScreen(
                 PatchState.ERROR -> {
                     DoPatchBody(modifier = Modifier, navigator = navigator)
                 }
-                else -> {}
+                else -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(size = 32.dp)
+                    }
+                }
             }
 
             if (showDownloadDialog) {
