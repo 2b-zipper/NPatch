@@ -73,8 +73,8 @@ import nkbe.util.NeoPackageManager
 import nkbe.util.ShizukuApi
 import top.nkbe.npatch.R
 import top.nkbe.npatch.config.Configs
-import top.nkbe.npatch.network.cdn.ApkCdnService
-import top.nkbe.npatch.network.cdn.VersionListResult
+import top.nkbe.npatch.network.proxy.ApkProxyService
+import top.nkbe.npatch.network.proxy.VersionListResult
 import top.nkbe.npatch.repo.KnotRelease
 import top.nkbe.npatch.repo.KnotReleaseLoader
 import top.nkbe.npatch.ui.component.NPatchScaffold
@@ -113,7 +113,7 @@ fun HomeScreen(
     var refreshKey by remember { mutableStateOf(0) }
     var showStorageWarning by remember { mutableStateOf(false) }
     var showPatchChoiceDialog by remember { mutableStateOf(false) }
-    var showCdnVersionDialog by remember { mutableStateOf(false) }
+    var showProxyVersionDialog by remember { mutableStateOf(false) }
 
     // KnotDownloader は stateless になったため HomeScreen レベルで remember する必要はないが、
     // context を保持するため remember で同一インスタンスを使い回す
@@ -436,27 +436,27 @@ fun HomeScreen(
         }
     }
 
-    // CDN バージョン選択ダイアログ
-    if (showCdnVersionDialog) {
-        CdnVersionSelectionDialog(
+    // Proxy バージョン選択ダイアログ
+    if (showProxyVersionDialog) {
+        ProxyVersionSelectionDialog(
             onSelectVersion = { selectedVer ->
-                showCdnVersionDialog = false
-                navigateToPatch(ACTION_CDN_DOWNLOAD, selectedVer?.toString())
+                showProxyVersionDialog = false
+                navigateToPatch(ACTION_PROXY_DOWNLOAD, selectedVer?.toString())
             },
-            onDismiss = { showCdnVersionDialog = false }
+            onDismiss = { showProxyVersionDialog = false }
         )
     }
     // パッチ方法選択ダイアログ
     if (showPatchChoiceDialog) {
         PatchChoiceDialog(
             showInstalledOption = lineApp != null,
-            onPatchFromCdn = {
+            onPatchFromProxy = {
                 showPatchChoiceDialog = false
                 val customVersion = Configs.customLineVersionCodeOrNull
                 if (customVersion != null) {
-                    navigateToPatch(ACTION_CDN_DOWNLOAD, customVersion.toString())
+                    navigateToPatch(ACTION_PROXY_DOWNLOAD, customVersion.toString())
                 } else {
-                    showCdnVersionDialog = true
+                    showProxyVersionDialog = true
                 }
             },
             onPatchInstalled = {
@@ -519,7 +519,7 @@ fun HomeScreen(
 @Composable
 private fun PatchChoiceDialog(
     showInstalledOption: Boolean,
-    onPatchFromCdn: () -> Unit,
+    onPatchFromProxy: () -> Unit,
     onPatchInstalled: () -> Unit,
     onPatchFromApk: () -> Unit,
     onDownload: () -> Unit,
@@ -534,8 +534,8 @@ private fun PatchChoiceDialog(
         Column {
             PatchChoiceItem(
                 icon = Icons.Rounded.CloudDownload,
-                text = stringResource(R.string.patch_from_cdn),
-                onClick = { show.value = false; onPatchFromCdn() },
+                text = stringResource(R.string.patch_from_proxy),
+                onClick = { show.value = false; onPatchFromProxy() },
             )
             if (showInstalledOption) {
                 PatchChoiceItem(
@@ -827,7 +827,7 @@ private fun DialogMessageRow(text: String) {
 }
 
 @Composable
-private fun CdnVersionSelectionDialog(
+private fun ProxyVersionSelectionDialog(
     onSelectVersion: (Long?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -836,7 +836,7 @@ private fun CdnVersionSelectionDialog(
     var result by remember { mutableStateOf<VersionListResult?>(null) }
 
     LaunchedEffect(Unit) {
-        result = ApkCdnService(context).fetchAvailableVersions()
+        result = ApkProxyService(context).fetchAvailableVersions()
         isLoading = false
     }
 

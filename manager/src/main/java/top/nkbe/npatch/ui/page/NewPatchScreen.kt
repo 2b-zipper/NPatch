@@ -38,13 +38,13 @@ import top.nkbe.npatch.ui.viewmodel.NewPatchViewModel.ViewAction
 const val ACTION_STORAGE = 0
 const val ACTION_APPLIST = 1
 const val ACTION_INTENT_INSTALL = 2
-const val ACTION_CDN_DOWNLOAD = 3
+const val ACTION_PROXY_DOWNLOAD = 3
 
 const val LINE_DOWNLOAD_URL = "https://www.apkmirror.com/uploads/?appcategory=line"
 
 /**
  * パッチ実行画面。
- * ストレージからの APK 選択、インストール済みアプリの直接パッチ、インテント経由の APK、CDN 自動ダウンロードパッチを扱う。
+ * ストレージからの APK 選択、インストール済みアプリの直接パッチ、インテント経由の APK、Proxy 自動ダウンロードパッチを扱う。
  */
 @Composable
 fun NewPatchScreen(
@@ -125,9 +125,9 @@ fun NewPatchScreen(
                 }
                 viewModel.dispatch(ViewAction.DoneInit)
             }
-            ACTION_CDN_DOWNLOAD -> {
+            ACTION_PROXY_DOWNLOAD -> {
                 val targetVer = data?.toLongOrNull()
-                viewModel.dispatch(ViewAction.ConfigureCdnLinePatch(targetVer))
+                viewModel.dispatch(ViewAction.ConfigureProxyLinePatch(targetVer))
             }
         }
     }

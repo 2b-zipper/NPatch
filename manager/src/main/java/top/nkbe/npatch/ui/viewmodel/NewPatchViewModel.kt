@@ -19,7 +19,7 @@ import top.nkbe.npatch.Patcher
 import top.nkbe.npatch.config.ConfigManager
 import top.nkbe.npatch.database.entity.Module
 import top.nkbe.npatch.lspApp
-import top.nkbe.npatch.network.cdn.ApkCdnService
+import top.nkbe.npatch.network.proxy.ApkProxyService
 import top.nkbe.npatch.patch.util.Logger
 import top.nkbe.npatch.share.Constants
 import top.nkbe.npatch.share.PatchConfig
@@ -44,17 +44,17 @@ class NewPatchViewModel : ViewModel() {
     sealed class ViewAction {
         object DoneInit : ViewAction()
         data class ConfigurePatch(val app: AppInfo) : ViewAction()
-        data class ConfigureCdnLinePatch(val targetVersionCode: Long? = null) : ViewAction()
+        data class ConfigureProxyLinePatch(val targetVersionCode: Long? = null) : ViewAction()
         object SubmitPatch : ViewAction()
         object LaunchPatch : ViewAction()
     }
 
-    data class CdnRequest(val targetVersionCode: Long?)
+    data class ProxyRequest(val targetVersionCode: Long?)
 
     var patchState by mutableStateOf(PatchState.INIT)
         private set
 
-    var cdnRequest by mutableStateOf<CdnRequest?>(null)
+    var proxyRequest by mutableStateOf<ProxyRequest?>(null)
         private set
 
     // Patch Configuration
@@ -114,7 +114,7 @@ class NewPatchViewModel : ViewModel() {
             when (action) {
                 is ViewAction.DoneInit -> doneInit()
                 is ViewAction.ConfigurePatch -> configurePatch(action.app)
-                is ViewAction.ConfigureCdnLinePatch -> configureCdnLinePatch(action.targetVersionCode)
+                is ViewAction.ConfigureProxyLinePatch -> configureProxyLinePatch(action.targetVersionCode)
                 is ViewAction.SubmitPatch -> submitPatch()
                 is ViewAction.LaunchPatch -> launchPatch()
             }
@@ -123,7 +123,7 @@ class NewPatchViewModel : ViewModel() {
 
     fun reset() {
         patchState = PatchState.INIT
-        cdnRequest = null
+        proxyRequest = null
         useManager = true
         newPackageName = ""
         debuggable = false
@@ -153,15 +153,15 @@ class NewPatchViewModel : ViewModel() {
 
     private fun configurePatch(app: AppInfo) {
         Log.d(TAG, "Configuring patch for ${app.app.packageName}")
-        cdnRequest = null
+        proxyRequest = null
         patchApp = app
         patchState = PatchState.CONFIGURING
         newPackageName = app.app.packageName
     }
 
-    private fun configureCdnLinePatch(targetVer: Long? = null) {
-        Log.d(TAG, "Configuring CDN Line Patch (targetVer=$targetVer)")
-        cdnRequest = CdnRequest(targetVer)
+    private fun configureProxyLinePatch(targetVer: Long? = null) {
+        Log.d(TAG, "Configuring Proxy Line Patch (targetVer=$targetVer)")
+        proxyRequest = ProxyRequest(targetVer)
         useManager = true
         embeddedModules = emptyList()
         val placeholderAppInfo = ApplicationInfo().apply {
@@ -171,7 +171,7 @@ class NewPatchViewModel : ViewModel() {
         patchApp = AppInfo(
             app = placeholderAppInfo,
             label = "LINE",
-            versionName = targetVer?.let(::formatLineVersionName) ?: "Cloud CDN",
+            versionName = targetVer?.let(::formatLineVersionName) ?: "Cloud Proxy",
             versionCode = targetVer ?: 0L
         )
         newPackageName = LINE_PACKAGE_NAME
@@ -179,7 +179,7 @@ class NewPatchViewModel : ViewModel() {
     }
 
     private fun submitPatch() {
-        Log.d(TAG, "Submit Patch (cdn=${cdnRequest != null})")
+        Log.d(TAG, "Submit Patch (proxy=${proxyRequest != null})")
         if (useManager) embeddedModules = emptyList()
         val patchSigBypassLevel = if (useManager) sigBypassLevel else sigBypassLevel.coerceAtMost(Constants.SIGBYPASS_HIGH)
         val patchHideLibs =
@@ -205,7 +205,7 @@ class NewPatchViewModel : ViewModel() {
             microgVendor,
         )
         patchOptions = buildPatchOptions(
-            apkPaths = if (cdnRequest != null) {
+            apkPaths = if (proxyRequest != null) {
                 emptyList()
             } else {
                 listOf(patchApp.app.sourceDir) + (patchApp.app.splitSourceDirs ?: emptyArray())
@@ -226,8 +226,8 @@ class NewPatchViewModel : ViewModel() {
     private suspend fun launchPatch() {
         logger.i("Launch Patch")
         patchState = try {
-            val options = cdnRequest
-                ?.let { buildPatchOptions(apkPaths = downloadCdnApks(it)) }
+            val options = proxyRequest
+                ?.let { buildPatchOptions(apkPaths = downloadProxyApks(it)) }
                 ?: patchOptions
 
             logger.i("[Patch] Starting LSPatch engine...")
@@ -247,8 +247,8 @@ class NewPatchViewModel : ViewModel() {
         }
     }
 
-    private suspend fun downloadCdnApks(request: CdnRequest): List<String> {
-        val downloadedFiles = ApkCdnService(lspApp).downloadLineApksForPatcher(
+    private suspend fun downloadProxyApks(request: ProxyRequest): List<String> {
+        val downloadedFiles = ApkProxyService(lspApp).downloadLineApksForPatcher(
             logger = logger,
             targetVersionCode = request.targetVersionCode,
             onProgressUpdate = ::updateLastLog,

@@ -54,7 +54,7 @@ import top.nkbe.npatch.config.ThemeSettings
 import top.nkbe.npatch.config.dataStore
 import top.nkbe.npatch.config.DEFAULT_CUSTOM_COLOR
 import top.nkbe.npatch.database.entity.Module
-import top.nkbe.npatch.network.cdn.ApkCdnService
+import top.nkbe.npatch.network.proxy.ApkProxyService
 import top.nkbe.npatch.ui.activity.MainActivity
 import top.nkbe.npatch.ui.component.NPatchScaffold
 import top.nkbe.npatch.ui.util.LocalSnackbarHost
@@ -123,8 +123,8 @@ fun SettingsScreen() {
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
             SmallTitle(text = stringResource(R.string.settings_other_settings))
-            CdnVersionSettings()
-            CdnCachePreference()
+            ProxyVersionSettings()
+            ProxyCachePreference()
             LanguagePreference()
             KeyStore()
             DetailPatchLogs()
@@ -651,7 +651,7 @@ private fun WelcomeGuide() {
 }
 
 @Composable
-private fun CdnVersionSettings() {
+private fun ProxyVersionSettings() {
     val showEditDialog = remember { mutableStateOf(false) }
     var tempVersionCode by remember { mutableStateOf(Configs.customLineVersionCode) }
 
@@ -749,7 +749,7 @@ private fun CdnVersionSettings() {
 }
 
 @Composable
-private fun CdnCachePreference() {
+private fun ProxyCachePreference() {
     val context = LocalContext.current
     val showConfirmDialog = remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
@@ -757,19 +757,19 @@ private fun CdnCachePreference() {
 
     LaunchedEffect(refreshKey) {
         cacheSizeBytes = withContext(Dispatchers.IO) {
-            ApkCdnService.cacheSizeBytes(context)
+            ApkProxyService.cacheSizeBytes(context)
         }
     }
 
     ArrowPreference(
-        title = stringResource(R.string.settings_cdn_cache),
+        title = stringResource(R.string.settings_proxy_cache),
         summary = if (cacheSizeBytes > 0) {
             stringResource(
-                R.string.settings_cdn_cache_summary,
+                R.string.settings_proxy_cache_summary,
                 Formatter.formatFileSize(context, cacheSizeBytes),
             )
         } else {
-            stringResource(R.string.settings_cdn_cache_empty)
+            stringResource(R.string.settings_proxy_cache_empty)
         },
         startAction = {
             SettingsStartIcon(Icons.Outlined.Delete)
@@ -779,7 +779,7 @@ private fun CdnCachePreference() {
 
     val scope = rememberCoroutineScope()
     OverlayDialog(
-        title = stringResource(R.string.settings_cdn_cache_clear_title),
+        title = stringResource(R.string.settings_proxy_cache_clear_title),
         show = showConfirmDialog.value,
         onDismissRequest = { showConfirmDialog.value = false },
     ) {
@@ -789,7 +789,7 @@ private fun CdnCachePreference() {
                 .padding(horizontal = 24.dp, vertical = 8.dp),
         ) {
             Text(
-                text = stringResource(R.string.settings_cdn_cache_clear_desc),
+                text = stringResource(R.string.settings_proxy_cache_clear_desc),
                 style = COUITheme.textStyles.body2,
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.padding(bottom = 12.dp),
@@ -809,7 +809,7 @@ private fun CdnCachePreference() {
                     onClick = {
                         showConfirmDialog.value = false
                         scope.launch {
-                            withContext(Dispatchers.IO) { ApkCdnService.clearCache(context) }
+                            withContext(Dispatchers.IO) { ApkProxyService.clearCache(context) }
                             refreshKey++
                         }
                     },

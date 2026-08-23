@@ -1,4 +1,4 @@
-package top.nkbe.npatch.network.cdn
+package top.nkbe.npatch.network.proxy
 
 import android.content.Context
 import android.os.Build
@@ -16,7 +16,7 @@ import java.io.FileOutputStream
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-private const val TAG = "ApkCdnService"
+private const val TAG = "ApkProxyService"
 
 private const val CHANNEL_STABLE = "stable"
 private const val CHANNEL_PRERELEASE = "prerelease"
@@ -28,7 +28,7 @@ private const val ABI_ARM32 = "armeabi-v7a"
 
 private const val FALLBACK_DPI_SPLIT = "config.xxhdpi.apk"
 
-private const val CACHE_DIR_NAME = "cdn_line_apks"
+private const val CACHE_DIR_NAME = "proxy_line_apks"
 private const val UNKNOWN_VERSION_DIR = "latest"
 private const val PART_SUFFIX = ".part"
 
@@ -42,7 +42,7 @@ data class VersionListResult(
     val versions: List<Long> = emptyList(),
 )
 
-class ApkCdnService(
+class ApkProxyService(
     private val context: Context,
     private val baseUrl: String = DEFAULT_BASE_URL,
     private val versionsUrl: String = DEFAULT_VERSIONS_URL,
@@ -91,21 +91,21 @@ class ApkCdnService(
         val versionDir = File(cacheDir(context), resolvedVersionCode?.toString() ?: UNKNOWN_VERSION_DIR)
         val cachedFiles = fileNames.map { File(versionDir, it) }
 
-        logger.i("[CDN] Device: ABI=$deviceAbi (${Build.SUPPORTED_ABIS.joinToString()}), DPI=${context.resources.displayMetrics.densityDpi}")
-        logger.i("[CDN] Target Version Code: ${resolvedVersionCode ?: "Latest"}")
+        logger.i("[Proxy] Device: ABI=$deviceAbi (${Build.SUPPORTED_ABIS.joinToString()}), DPI=${context.resources.displayMetrics.densityDpi}")
+        logger.i("[Proxy] Target Version Code: ${resolvedVersionCode ?: "Latest"}")
 
         if (resolvedVersionCode != null && cachedFiles.all { it.isFile && it.length() > 0 }) {
             val totalBytes = cachedFiles.sumOf { it.length() }
-            notifyCompleted("[CDN] Reusing cached APKs for $resolvedVersionCode (${totalBytes.toMbString()} MB), skipping download.")
+            notifyCompleted("[Proxy] Reusing cached APKs for $resolvedVersionCode (${totalBytes.toMbString()} MB), skipping download.")
             return@withContext cachedFiles
         }
 
         versionDir.mkdirs()
-        logger.i("[CDN] Connecting to $baseUrl...")
+        logger.i("[Proxy] Connecting to $baseUrl...")
 
         val downloadedFiles = mutableListOf<File>()
         for ((index, fileName) in fileNames.withIndex()) {
-            val prefix = "[CDN] [${index + 1}/${fileNames.size}]"
+            val prefix = "[Proxy] [${index + 1}/${fileNames.size}]"
             val targetFile = File(versionDir, fileName)
             val partFile = File(versionDir, "$fileName$PART_SUFFIX")
 
@@ -168,7 +168,7 @@ class ApkCdnService(
 
     private suspend fun resolveTargetVersionCode(logger: Logger): Long? {
         Configs.customLineVersionCodeOrNull?.let { customCode ->
-            logger.i("[CDN] Target Version: $customCode (Manual override from Settings ON)")
+            logger.i("[Proxy] Target Version: $customCode (Manual override from Settings ON)")
             return customCode
         }
 
@@ -176,11 +176,11 @@ class ApkCdnService(
         val recommended = fetchAvailableVersions(includePrerelease).recommended
         if (recommended != null) {
             val channel = if (includePrerelease) CHANNEL_PRERELEASE else CHANNEL_STABLE
-            logger.i("[CDN] Target Version: $recommended (Resolved from line-versions [$channel])")
+            logger.i("[Proxy] Target Version: $recommended (Resolved from line-versions [$channel])")
             return recommended
         }
 
-        logger.i("[CDN] Target Version: Latest (from Cloud CDN)")
+        logger.i("[Proxy] Target Version: Latest (from Cloud Proxy)")
         return null
     }
 
