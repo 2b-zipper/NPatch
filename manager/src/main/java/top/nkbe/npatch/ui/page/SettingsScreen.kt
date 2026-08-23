@@ -2,6 +2,7 @@ package top.nkbe.npatch.ui.page
 
 import android.app.Activity
 import android.content.Intent
+import android.text.format.Formatter
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Folder
@@ -35,7 +37,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.edit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import nkbe.util.ModulePipeline
 import nkbe.util.NeoPackageManager
 import top.nkbe.npatch.LSPApplication
@@ -50,10 +54,12 @@ import top.nkbe.npatch.config.ThemeSettings
 import top.nkbe.npatch.config.dataStore
 import top.nkbe.npatch.config.DEFAULT_CUSTOM_COLOR
 import top.nkbe.npatch.database.entity.Module
+import top.nkbe.npatch.network.cdn.ApkCdnService
 import top.nkbe.npatch.ui.activity.MainActivity
 import top.nkbe.npatch.ui.component.NPatchScaffold
 import top.nkbe.npatch.ui.util.LocalSnackbarHost
 import top.nkbe.npatch.util.LINE_PACKAGE_NAME
+import top.nkbe.npatch.util.formatLineVersionName
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -118,6 +124,7 @@ fun SettingsScreen() {
 
             SmallTitle(text = stringResource(R.string.settings_other_settings))
             CdnVersionSettings()
+            CdnCachePreference()
             LanguagePreference()
             KeyStore()
             DetailPatchLogs()
@@ -740,3 +747,77 @@ private fun CdnVersionSettings() {
         }
     }
 }
+
+@Composable
+private fun CdnCachePreference() {
+    val context = LocalContext.current
+    val showConfirmDialog = remember { mutableStateOf(false) }
+    var refreshKey by remember { mutableIntStateOf(0) }
+    var cacheSizeBytes by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(refreshKey) {
+        cacheSizeBytes = withContext(Dispatchers.IO) {
+            ApkCdnService.cacheSizeBytes(context)
+        }
+    }
+
+    ArrowPreference(
+        title = stringResource(R.string.settings_cdn_cache),
+        summary = if (cacheSizeBytes > 0) {
+            stringResource(
+                R.string.settings_cdn_cache_summary,
+                Formatter.formatFileSize(context, cacheSizeBytes),
+            )
+        } else {
+            stringResource(R.string.settings_cdn_cache_empty)
+        },
+        startAction = {
+            SettingsStartIcon(Icons.Outlined.Delete)
+        },
+        onClick = { showConfirmDialog.value = true }
+    )
+
+    val scope = rememberCoroutineScope()
+    OverlayDialog(
+        title = stringResource(R.string.settings_cdn_cache_clear_title),
+        show = showConfirmDialog.value,
+        onDismissRequest = { showConfirmDialog.value = false },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.settings_cdn_cache_clear_desc),
+                style = COUITheme.textStyles.body2,
+                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(
+                    text = stringResource(android.R.string.cancel),
+                    onClick = { showConfirmDialog.value = false },
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(16.dp))
+                TextButton(
+                    text = stringResource(android.R.string.ok),
+                    onClick = {
+                        showConfirmDialog.value = false
+                        scope.launch {
+                            withContext(Dispatchers.IO) { ApkCdnService.clearCache(context) }
+                            refreshKey++
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColors(),
+                )
+            }
+        }
+    }
+}
+

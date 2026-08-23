@@ -25,15 +25,12 @@ import top.nkbe.npatch.share.Constants
 import top.nkbe.npatch.share.PatchConfig
 import top.nkbe.npatch.util.LINE_PACKAGE_NAME
 import top.nkbe.npatch.util.formatLineVersionName
-import java.io.File
 
 class NewPatchViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "NewPatchViewModel"
         private const val KNOT_PACKAGE_NAME = "app.zipper.knot"
-
-        private const val CDN_CACHE_DIR = "cdn_line_apks"
     }
 
     enum class PatchState {
@@ -253,7 +250,6 @@ class NewPatchViewModel : ViewModel() {
     private suspend fun downloadCdnApks(request: CdnRequest): List<String> {
         val downloadedFiles = ApkCdnService(lspApp).downloadLineApksForPatcher(
             logger = logger,
-            outputDir = File(lspApp.cacheDir, CDN_CACHE_DIR),
             targetVersionCode = request.targetVersionCode,
             onProgressUpdate = ::updateLastLog,
         )

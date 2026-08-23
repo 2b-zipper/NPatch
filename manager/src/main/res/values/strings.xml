@@ -372,4 +372,9 @@
     <string name="select_line_version_loading">Fetching available versions…</string>
     <string name="select_line_version_recommended">Recommended</string>
     <string name="select_line_version_empty">No versions found</string>
+    <string name="settings_cdn_cache">CDN cache</string>
+    <string name="settings_cdn_cache_summary">%1$s · Tap to delete</string>
+    <string name="settings_cdn_cache_empty">No cached APKs</string>
+    <string name="settings_cdn_cache_clear_title">Delete CDN cache</string>
+    <string name="settings_cdn_cache_clear_desc">Deletes the LINE APKs downloaded from CDN. They will be downloaded again on the next patch.</string>
 </resources>

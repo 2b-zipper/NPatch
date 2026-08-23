@@ -28,6 +28,10 @@ private const val ABI_ARM32 = "armeabi-v7a"
 
 private const val FALLBACK_DPI_SPLIT = "config.xxhdpi.apk"
 
+private const val CACHE_DIR_NAME = "cdn_line_apks"
+private const val UNKNOWN_VERSION_DIR = "latest"
+private const val PART_SUFFIX = ".part"
+
 private val deviceAbi: String
     get() = if (Build.SUPPORTED_ABIS.any { it.contains("arm64") }) ABI_ARM64 else ABI_ARM32
 
@@ -76,26 +80,34 @@ class ApkCdnService(
 
     suspend fun downloadLineApksForPatcher(
         logger: Logger,
-        outputDir: File,
         targetVersionCode: Long? = null,
         fileNames: List<String> = getSplitFilesForDevice(context),
         onProgressUpdate: ((String) -> Unit)? = null,
     ): List<File> = withContext(Dispatchers.IO) {
-        if (!outputDir.exists()) outputDir.mkdirs()
-
         val notifyCompleted = onProgressUpdate ?: logger::i
 
-        val downloadedFiles = mutableListOf<File>()
         val resolvedVersionCode = targetVersionCode ?: resolveTargetVersionCode(logger)
         val vParam = resolvedVersionCode?.takeIf { it > 0 }?.let { "?v=$it" }.orEmpty()
+        val versionDir = File(cacheDir(context), resolvedVersionCode?.toString() ?: UNKNOWN_VERSION_DIR)
+        val cachedFiles = fileNames.map { File(versionDir, it) }
 
         logger.i("[CDN] Device: ABI=$deviceAbi (${Build.SUPPORTED_ABIS.joinToString()}), DPI=${context.resources.displayMetrics.densityDpi}")
         logger.i("[CDN] Target Version Code: ${resolvedVersionCode ?: "Latest"}")
+
+        if (resolvedVersionCode != null && cachedFiles.all { it.isFile && it.length() > 0 }) {
+            val totalBytes = cachedFiles.sumOf { it.length() }
+            notifyCompleted("[CDN] Reusing cached APKs for $resolvedVersionCode (${totalBytes.toMbString()} MB), skipping download.")
+            return@withContext cachedFiles
+        }
+
+        versionDir.mkdirs()
         logger.i("[CDN] Connecting to $baseUrl...")
 
+        val downloadedFiles = mutableListOf<File>()
         for ((index, fileName) in fileNames.withIndex()) {
             val prefix = "[CDN] [${index + 1}/${fileNames.size}]"
-            val targetFile = File(outputDir, fileName)
+            val targetFile = File(versionDir, fileName)
+            val partFile = File(versionDir, "$fileName$PART_SUFFIX")
 
             logger.i("$prefix Downloading $fileName...")
 
@@ -109,7 +121,7 @@ class ApkCdnService(
                 val totalBytes = body.contentLength()
 
                 body.byteStream().use { input ->
-                    FileOutputStream(targetFile).use { output ->
+                    FileOutputStream(partFile).use { output ->
                         val buffer = ByteArray(64 * 1024)
                         var bytesRead: Int
                         var fileBytes = 0L
@@ -135,11 +147,23 @@ class ApkCdnService(
                 }
             }
 
+            targetFile.delete()
+            if (!partFile.renameTo(targetFile)) {
+                throw IllegalStateException("Failed to finalize downloaded file $fileName")
+            }
+
             notifyCompleted("$prefix $fileName (${targetFile.length().toMbString()} MB) downloaded successfully.")
             downloadedFiles.add(targetFile)
         }
 
+        keepOnlyCachedVersion(versionDir)
         downloadedFiles
+    }
+
+    private fun keepOnlyCachedVersion(keep: File) {
+        cacheDir(context).listFiles()
+            ?.filter { it.name != keep.name }
+            ?.forEach { it.deleteRecursively() }
     }
 
     private suspend fun resolveTargetVersionCode(logger: Logger): Long? {
@@ -164,6 +188,21 @@ class ApkCdnService(
         const val DEFAULT_BASE_URL = "https://2ipper.com"
         const val DEFAULT_VERSIONS_URL =
             "https://raw.githubusercontent.com/2b-zipper/line-versions/main/versions.json"
+
+        fun cacheDir(context: Context): File = File(context.cacheDir, CACHE_DIR_NAME)
+
+        fun cachedVersionCode(context: Context): Long? =
+            cacheDir(context).listFiles()
+                ?.firstOrNull { it.isDirectory }
+                ?.name
+                ?.toLongOrNull()
+
+        fun cacheSizeBytes(context: Context): Long =
+            cacheDir(context).walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+
+        fun clearCache(context: Context) {
+            cacheDir(context).deleteRecursively()
+        }
 
         fun getSplitFilesForDevice(context: Context): List<String> {
             val abiSplit = "config.${deviceAbi.replace('-', '_')}.apk"

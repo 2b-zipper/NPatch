@@ -146,4 +146,9 @@
     <string name="select_line_version_loading">バージョン情報を取得中…</string>
     <string name="select_line_version_recommended">推奨</string>
     <string name="select_line_version_empty">バージョンが見つかりません</string>
+    <string name="settings_cdn_cache">CDNキャッシュ</string>
+    <string name="settings_cdn_cache_summary">%1$s · タップで削除</string>
+    <string name="settings_cdn_cache_empty">キャッシュなし</string>
+    <string name="settings_cdn_cache_clear_title">CDNキャッシュを削除</string>
+    <string name="settings_cdn_cache_clear_desc">CDNからダウンロードしたLINEのAPKを削除します。次回のパッチ時に再ダウンロードされます。</string>
 </resources>
