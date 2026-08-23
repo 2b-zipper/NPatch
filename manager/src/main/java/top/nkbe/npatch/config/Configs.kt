@@ -16,6 +16,10 @@ object Configs {
     private const val PREFS_DETAIL_PATCH_LOGS = "detail_patch_logs"
     private const val PREFS_LANGUAGE = "language"
     private const val PREFS_WEL_SKIP = "WEL_SKIP"
+    private const val PREFS_OUTPUT_FULL_LOG = "output_full_log"
+    private const val PREFS_USE_CUSTOM_LINE_VERSION = "use_custom_line_version"
+    private const val PREFS_CUSTOM_LINE_VERSION_CODE = "custom_line_version_code"
+    private const val PREFS_INCLUDE_PRERELEASE = "include_prerelease_versions"
 
     private fun defaultKeyStorePreset(): KeystorePreset {
         return if (File(lspApp.filesDir, "keystore.bks").exists()) {
@@ -62,9 +66,26 @@ object Configs {
         lspApp.prefs.edit().putBoolean(PREFS_WEL_SKIP, it).apply()
     }
 
-    private const val PREFS_OUTPUT_FULL_LOG = "output_full_log"
-
     var outputFullLog by delegateStateOf(lspApp.prefs.getBoolean(PREFS_OUTPUT_FULL_LOG, false)) {
         lspApp.prefs.edit().putBoolean(PREFS_OUTPUT_FULL_LOG, it).apply()
+    }
+
+    var useCustomLineVersion by delegateStateOf(lspApp.prefs.getBoolean(PREFS_USE_CUSTOM_LINE_VERSION, false)) {
+        lspApp.prefs.edit().putBoolean(PREFS_USE_CUSTOM_LINE_VERSION, it).apply()
+    }
+
+    var customLineVersionCode by delegateStateOf(lspApp.prefs.getString(PREFS_CUSTOM_LINE_VERSION_CODE, "")!!) {
+        lspApp.prefs.edit().putString(PREFS_CUSTOM_LINE_VERSION_CODE, it).apply()
+    }
+
+    val customLineVersionCodeOrNull: Long?
+        get() = if (useCustomLineVersion) {
+            customLineVersionCode.trim().toLongOrNull()?.takeIf { it > 0 }
+        } else {
+            null
+        }
+
+    var includePrereleaseVersions by delegateStateOf(lspApp.prefs.getBoolean(PREFS_INCLUDE_PRERELEASE, false)) {
+        lspApp.prefs.edit().putBoolean(PREFS_INCLUDE_PRERELEASE, it).apply()
     }
 }

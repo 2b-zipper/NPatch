@@ -51,6 +51,7 @@ import top.nkbe.npatch.R
 import top.nkbe.npatch.repo.KnotRelease
 import top.nkbe.npatch.repo.KnotReleaseLoader
 import top.nkbe.npatch.ui.component.NPatchScaffold
+import top.nkbe.npatch.ui.util.rememberDisplayedReleases
 
 /**
  * Knot 全リリース一覧画面。
@@ -63,6 +64,7 @@ fun KnotReleasesScreen(
 ) {
     val context = LocalContext.current
     var releases by remember { mutableStateOf<List<KnotRelease>>(emptyList()) }
+    val displayedReleases = rememberDisplayedReleases(releases)
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -156,7 +158,7 @@ fun KnotReleasesScreen(
                         }
                     }
                 }
-                releases.isEmpty() -> {
+                displayedReleases.isEmpty() -> {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -180,14 +182,14 @@ fun KnotReleasesScreen(
                     ) {
                         item { Spacer(Modifier.height(4.dp)) }
                         itemsIndexed(
-                            items = releases,
+                            items = displayedReleases,
                             key = { _, release -> release.tagName ?: release.hashCode().toString() }
                         ) { index, release ->
                             KnotReleaseItem(
                                 release = release,
                                 isLatest = index == 0,
                             )
-                            if (index < releases.lastIndex) {
+                            if (index < displayedReleases.lastIndex) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(vertical = 4.dp),
                                     color = COUITheme.colorScheme.outline.copy(alpha = 0.3f),
