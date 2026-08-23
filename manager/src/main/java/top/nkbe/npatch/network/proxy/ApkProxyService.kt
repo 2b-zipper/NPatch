@@ -26,8 +26,6 @@ private const val PROGRESS_INTERVAL_MS = 80L
 private const val ABI_ARM64 = "arm64-v8a"
 private const val ABI_ARM32 = "armeabi-v7a"
 
-private const val FALLBACK_DPI_SPLIT = "config.xxhdpi.apk"
-
 private const val CACHE_DIR_NAME = "proxy_line_apks"
 private const val UNKNOWN_VERSION_DIR = "latest"
 private const val PART_SUFFIX = ".part"
@@ -103,61 +101,68 @@ class ApkProxyService(
         versionDir.mkdirs()
         logger.i("[Proxy] Connecting to $baseUrl...")
 
-        val downloadedFiles = mutableListOf<File>()
-        for ((index, fileName) in fileNames.withIndex()) {
+        fileNames.mapIndexed { index, fileName ->
             val prefix = "[Proxy] [${index + 1}/${fileNames.size}]"
-            val targetFile = File(versionDir, fileName)
-            val partFile = File(versionDir, "$fileName$PART_SUFFIX")
+            val downloaded = downloadSplit(fileName, versionDir, vParam, prefix, logger, onProgressUpdate)
+            notifyCompleted("$prefix $fileName (${downloaded.length().toMbString()} MB) downloaded successfully.")
+            downloaded
+        }.also { keepOnlyCachedVersion(versionDir) }
+    }
 
-            logger.i("$prefix Downloading $fileName...")
+    private fun downloadSplit(
+        fileName: String,
+        versionDir: File,
+        vParam: String,
+        prefix: String,
+        logger: Logger,
+        onProgressUpdate: ((String) -> Unit)?,
+    ): File {
+        val targetFile = File(versionDir, fileName)
+        val partFile = File(versionDir, "$fileName$PART_SUFFIX")
 
-            val request = Request.Builder().url("$baseUrl/apk/file/$fileName$vParam").build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Failed to download $fileName (HTTP ${response.code})")
-                }
+        logger.i("$prefix Downloading $fileName...")
 
-                val body = response.body
-                val totalBytes = body.contentLength()
+        val request = Request.Builder().url("$baseUrl/apk/file/$fileName$vParam").build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Failed to download $fileName (HTTP ${response.code})")
+            }
 
-                body.byteStream().use { input ->
-                    FileOutputStream(partFile).use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        var bytesRead: Int
-                        var fileBytes = 0L
-                        var lastLoggedTime = 0L
+            val body = response.body
+            val totalBytes = body.contentLength()
 
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            fileBytes += bytesRead
+            body.byteStream().use { input ->
+                FileOutputStream(partFile).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var bytesRead: Int
+                    var fileBytes = 0L
+                    var lastLoggedTime = 0L
 
-                            val now = System.currentTimeMillis()
-                            if (now - lastLoggedTime > PROGRESS_INTERVAL_MS || fileBytes == totalBytes) {
-                                lastLoggedTime = now
-                                val progress = if (totalBytes > 0) {
-                                    val percent = ((fileBytes * 100) / totalBytes).toInt().coerceIn(0, 100)
-                                    "$percent% (${fileBytes.toMbString()} / ${totalBytes.toMbString()} MB)"
-                                } else {
-                                    "(${fileBytes.toMbString()} MB)"
-                                }
-                                onProgressUpdate?.invoke("$prefix Downloading $fileName... $progress")
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        fileBytes += bytesRead
+
+                        val now = System.currentTimeMillis()
+                        if (now - lastLoggedTime > PROGRESS_INTERVAL_MS || fileBytes == totalBytes) {
+                            lastLoggedTime = now
+                            val progress = if (totalBytes > 0) {
+                                val percent = ((fileBytes * 100) / totalBytes).toInt().coerceIn(0, 100)
+                                "$percent% (${fileBytes.toMbString()} / ${totalBytes.toMbString()} MB)"
+                            } else {
+                                "(${fileBytes.toMbString()} MB)"
                             }
+                            onProgressUpdate?.invoke("$prefix Downloading $fileName... $progress")
                         }
                     }
                 }
             }
-
-            targetFile.delete()
-            if (!partFile.renameTo(targetFile)) {
-                throw IllegalStateException("Failed to finalize downloaded file $fileName")
-            }
-
-            notifyCompleted("$prefix $fileName (${targetFile.length().toMbString()} MB) downloaded successfully.")
-            downloadedFiles.add(targetFile)
         }
 
-        keepOnlyCachedVersion(versionDir)
-        downloadedFiles
+        targetFile.delete()
+        if (!partFile.renameTo(targetFile)) {
+            throw IllegalStateException("Failed to finalize downloaded file $fileName")
+        }
+        return targetFile
     }
 
     private fun keepOnlyCachedVersion(keep: File) {
@@ -205,10 +210,8 @@ class ApkProxyService(
         }
 
         fun getSplitFilesForDevice(context: Context): List<String> {
-            val abiSplit = "config.${deviceAbi.replace('-', '_')}.apk"
-
             val densityDpi = context.resources.displayMetrics.densityDpi
-            val primaryDpiSplit = when {
+            val dpiSplit = when {
                 densityDpi <= DisplayMetrics.DENSITY_LOW -> "config.ldpi.apk"
                 densityDpi <= DisplayMetrics.DENSITY_MEDIUM -> "config.mdpi.apk"
                 densityDpi <= DisplayMetrics.DENSITY_TV -> "config.tvdpi.apk"
@@ -218,7 +221,7 @@ class ApkProxyService(
                 else -> "config.xxxhdpi.apk"
             }
 
-            return listOf("base.apk", abiSplit, primaryDpiSplit, FALLBACK_DPI_SPLIT).distinct()
+            return listOf("base.apk", "config.${deviceAbi.replace('-', '_')}.apk", dpiSplit)
         }
 
         private val defaultClient: OkHttpClient by lazy {
