@@ -33,18 +33,31 @@ object PatcherClient {
             val verbose = Configs.detailPatchLogs
             logger.verbose = verbose
             val settled = AtomicBoolean(false)
+            val lock = Any()
             var connection: ServiceConnection? = null
+            var bound = false
+            var service: IPatcherService? = null
 
-            fun unbind() {
-                connection?.let { runCatching { context.unbindService(it) } }
+            fun unbindLocked() {
+                connection?.let { if (bound) runCatching { context.unbindService(it) } }
                 connection = null
+                bound = false
+                service = null
             }
 
             fun finish(block: () -> Unit) {
-                if (settled.compareAndSet(false, true)) {
-                    unbind()
-                    block()
+                if (!settled.compareAndSet(false, true)) return
+                synchronized(lock) { unbindLocked() }
+                block()
+            }
+
+            fun abort() {
+                val target = synchronized(lock) {
+                    if (!settled.compareAndSet(false, true)) return
+                    service
                 }
+                runCatching { target?.abort() }
+                synchronized(lock) { unbindLocked() }
             }
 
             val callback = object : IPatcherCallback.Stub() {
@@ -70,23 +83,30 @@ object PatcherClient {
 
             val serviceConnection = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                    val service = IPatcherService.Stub.asInterface(binder)
-                    if (service == null) {
-                        finish {
-                            continuation.resumeWithException(IOException("Patcher service is unavailable"))
+                    val connected = IPatcherService.Stub.asInterface(binder)
+                    val failure = synchronized(lock) {
+                        when {
+                            settled.get() -> {
+                                unbindLocked()
+                                null
+                            }
+                            connected == null -> IOException("Patcher service is unavailable")
+                            else -> {
+                                service = connected
+                                runCatching {
+                                    connected.patch(
+                                        options.configArgs(),
+                                        options.inputApks.map { it.absolutePath }.toTypedArray(),
+                                        options.newPackageName,
+                                        verbose,
+                                        callback,
+                                    )
+                                }.exceptionOrNull()
+                            }
                         }
-                        return
                     }
-                    runCatching {
-                        service.patch(
-                            options.configArgs(),
-                            options.inputApks.map { it.absolutePath }.toTypedArray(),
-                            options.newPackageName,
-                            verbose,
-                            callback,
-                        )
-                    }.onFailure { error ->
-                        finish { continuation.resumeWithException(error) }
+                    if (failure != null) {
+                        finish { continuation.resumeWithException(failure) }
                     }
                 }
 
@@ -103,13 +123,20 @@ object PatcherClient {
                     }
                 }
             }
-            connection = serviceConnection
-
-            continuation.invokeOnCancellation { finish {} }
+            continuation.invokeOnCancellation { abort() }
 
             val intent = Intent(context, PatcherService::class.java)
-            val bound = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-            if (!bound) {
+            val startFailed = synchronized(lock) {
+                if (settled.get()) {
+                    false
+                } else {
+                    connection = serviceConnection
+                    bound = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+                    if (!bound) connection = null
+                    !bound
+                }
+            }
+            if (startFailed) {
                 finish {
                     continuation.resumeWithException(IOException("Unable to start the patcher process"))
                 }
