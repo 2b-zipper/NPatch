@@ -36,6 +36,7 @@ public class GmsRedirector {
     private static String targetGms = null;
     private static String originalSignature;
     private static String vendorPackage = null;
+    private static String vendorBase = null;
 
     public static void activate(Context context, String origSig, String vendor, ClassLoader appClassLoader) {
         originalSignature = origSig;
@@ -50,7 +51,14 @@ public class GmsRedirector {
         }
 
         Log.i(TAG, "Activating GMS redirect: " + REAL_GMS + " -> " + targetGms);
+        vendorBase = targetGms.endsWith(".android.gms")
+                ? targetGms.substring(0, targetGms.length() - ".android.gms".length())
+                : null;
+        if ("com.google".equals(vendorBase)) vendorBase = null;
+
         setupC2dmRedirects();
+
+        hookCreatePackageContext();
 
         hookIntentSetPackage();
         hookIntentSetAction();
@@ -59,7 +67,6 @@ public class GmsRedirector {
         hookIntentResolve();
         hookContentResolverAcquire();
         hookPackageManagerGetPackageInfo(context);
-        ClassLoader cl = appClassLoader != null ? appClassLoader : context.getClassLoader();
 
         Log.i(TAG, "GMS redirect hooks installed");
     }
@@ -89,13 +96,47 @@ public class GmsRedirector {
         return null;
     }
 
-    // microG serves no Dynamite module, so redirecting chimera only made the
-    // provider disagree with the caller's Uri. Left alone, real GMS answers it.
-    private static final String CHIMERA_AUTHORITY = REAL_GMS + ".chimera";
+    // Map standard location actions to vendor namespace (e.g. app.revanced.android.location).
+    private static final String LOCATION_ACTION_PREFIX = "com.google.android.location.";
+
+    private static String vendorLocationAction(String action) {
+        if (vendorBase == null || action == null || !action.startsWith(LOCATION_ACTION_PREFIX)) {
+            return null;
+        }
+        return vendorBase + action.substring("com.google".length());
+    }
+
+    private static final String DYNAMITE_MODULE_CLASS = REAL_GMS + ".dynamite.DynamiteModule";
+
+    private static boolean isCalledFromDynamiteModule() {
+        for (StackTraceElement frame : new Throwable().getStackTrace()) {
+            if (DYNAMITE_MODULE_CLASS.equals(frame.getClassName())) return true;
+        }
+        return false;
+    }
+
+    // Route createPackageContext(REAL_GMS) from DynamiteModule to targetGms
+    // so that Dynamite modules are loaded via microG.
+    private static void hookCreatePackageContext() {
+        XC_MethodHook hook = new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                if (param.args.length == 0 || !REAL_GMS.equals(param.args[0])) return;
+                if (!isCalledFromDynamiteModule()) return;
+                Log.d(TAG, "Routing Dynamite loader: " + REAL_GMS + " -> " + targetGms);
+                param.args[0] = targetGms;
+            }
+        };
+        for (String className : new String[]{"android.app.ContextImpl", "android.content.ContextWrapper"}) {
+            try {
+                XposedBridge.hookAllMethods(Class.forName(className), "createPackageContext", hook);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
 
     private static String redirectAuthority(String authority) {
         if (authority == null) return null;
-        if (CHIMERA_AUTHORITY.equals(authority)) return null;
         if (authority.startsWith(REAL_GMS + ".")) {
             return targetGms + authority.substring(REAL_GMS.length());
         }
@@ -144,6 +185,11 @@ public class GmsRedirector {
         if (isChooseAccountAction(action)) return null;
         String redirected = c2dmRedirectMap.get(action);
         if (redirected != null) return redirected;
+        String locationAction = vendorLocationAction(action);
+        if (locationAction != null) {
+            Log.d(TAG, "Redirecting location action: " + action + " -> " + locationAction);
+            return locationAction;
+        }
         if (targetGms != null && !REAL_GMS.equals(targetGms) && targetGms.endsWith(".android.gms")) {
             String prefix = "com.google.android.gms.";
             if (action.startsWith(prefix)) {
