@@ -342,29 +342,14 @@ public class SigBypass {
         SigningInfo signingInfo = packageInfo.signingInfo;
         if (signingInfo != null) {
             XLog.d(TAG, "Replace signature info for `" + packageName + "` (method 2)");
-            try {
-                Signature[] signaturesArray = (Signature[]) XposedHelpers.callMethod(signingInfo, "getApkContentsSigners");
-                if (signaturesArray != null && signaturesArray.length > 0) {
-                    replaceSignatureArray(signaturesArray, replacements);
-                }
-                Signature[] history = (Signature[]) XposedHelpers.callMethod(signingInfo, "getSigningCertificateHistory");
-                if (history != null && history.length > 0) {
-                    replaceSignatureArray(history, replacements);
-                }
-                // Try to replace internal fields if methods don't work or for deeper coverage
-                Object mSigningDetails = XposedHelpers.getObjectField(signingInfo, "mSigningDetails");
-                if (mSigningDetails != null) {
-                    Signature[] pastSignatures = (Signature[]) XposedHelpers.getObjectField(mSigningDetails, "pastSigningCertificates");
-                    if (pastSignatures != null && pastSignatures.length > 0) {
-                        replaceSignatureArray(pastSignatures, replacements);
-                    }
-                    Signature[] currentSignatures = (Signature[]) XposedHelpers.getObjectField(mSigningDetails, "signatures");
-                    if (currentSignatures != null && currentSignatures.length > 0) {
-                        replaceSignatureArray(currentSignatures, replacements);
-                    }
-                }
-            } catch (Throwable e) {
-                Log.w(TAG, "fail to reinforce signingInfo for " + packageName, e);
+            replaceSignaturesFromMethod(signingInfo, "getApkContentsSigners", replacements);
+            replaceSignaturesFromMethod(signingInfo, "getSigningCertificateHistory", replacements);
+
+            Object signingDetails = findSigningDetails(signingInfo);
+            if (signingDetails != null) {
+                replaceSignaturesFromField(signingDetails, replacements, "mSignatures", "signatures");
+                replaceSignaturesFromField(signingDetails, replacements,
+                        "mPastSigningCertificates", "pastSigningCertificates");
             }
         }
     }
@@ -450,6 +435,42 @@ public class SigBypass {
             cloned[i] = signatures[i] == null ? null : new Signature(signatures[i].toByteArray());
         }
         return cloned;
+    }
+
+    private static void replaceSignaturesFromMethod(SigningInfo signingInfo, String methodName,
+                                                    Signature[] replacements) {
+        try {
+            Signature[] signatures = (Signature[]) XposedHelpers.callMethod(signingInfo, methodName);
+            if (signatures != null && signatures.length > 0) {
+                replaceSignatureArray(signatures, replacements);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static Object findSigningDetails(SigningInfo signingInfo) {
+        for (String fieldName : new String[]{"mSigningDetails", "signingDetails"}) {
+            try {
+                Object signingDetails = XposedHelpers.getObjectField(signingInfo, fieldName);
+                if (signingDetails != null) return signingDetails;
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static void replaceSignaturesFromField(Object signingDetails, Signature[] replacements,
+                                                   String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            try {
+                Signature[] signatures = (Signature[]) XposedHelpers.getObjectField(signingDetails, fieldName);
+                if (signatures != null && signatures.length > 0) {
+                    replaceSignatureArray(signatures, replacements);
+                    return;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     private static void replaceSignatureArray(Signature[] target, Signature[] replacements) {
